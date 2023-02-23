@@ -1,0 +1,13 @@
+[package]
+name = "cramp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cod = { git = "https://github.com/kyllingene/cod.git" }
+dbus = "0.9.7"
+rand = "0.8.5"
+rodio = "0.17"
+termion = "2.0"
