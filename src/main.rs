@@ -1,15 +1,15 @@
 use std::env;
 use std::fmt::Debug;
-use std::fs::{read_dir, File, read_to_string};
+use std::fs::{read_dir, read_to_string, File};
 use std::io::{self, stdin, stdout, BufReader};
 use std::path::Path;
 use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use dbus::Message;
-use dbus::blocking::Connection;
-use dbus::channel::MatchingReceiver;
-use dbus::message::MatchRule;
+use dbus::blocking::{Connection, LocalConnection};
+use dbus::MethodErr;
+use dbus_tree::Factory;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rodio::{Decoder, OutputStream, Sink};
@@ -28,7 +28,12 @@ struct Song {
 }
 
 impl Song {
-    pub fn new<S: ToString>(file: S, name: Option<S>, next: Option<S>, length: Option<u32>) -> Self {
+    pub fn new<S: ToString>(
+        file: S,
+        name: Option<S>,
+        next: Option<S>,
+        length: Option<u32>,
+    ) -> Self {
         Self {
             file: file.to_string(),
             name: name.map_or_else(
@@ -100,6 +105,9 @@ struct Queue {
     queue: Vec<Song>,
     past: Vec<Song>,
 
+    volume: f32,
+    rate: f32,
+
     sink: Sink,
     _stream: OutputStream,
 }
@@ -118,6 +126,9 @@ impl Default for Queue {
 
             queue: Vec::new(),
             past: Vec::with_capacity(100),
+
+            volume: 1.0,
+            rate: 1.0,
 
             sink,
             _stream,
@@ -200,13 +211,13 @@ impl Queue {
 
         for song in &self.songs {
             write!(file, "{}", song.file).unwrap();
-            
+
             if let Some(next) = &song.next {
                 write!(file, "\n::{next}\n").unwrap();
             } else {
                 writeln!(file).unwrap();
             }
-        } 
+        }
     }
 
     pub fn play(&mut self) {
@@ -225,12 +236,18 @@ impl Queue {
         }
     }
 
+    pub fn set_volume(&mut self) {
+        self.sink.set_volume(self.volume);
+    }
+
     pub fn raise_volume(&mut self) {
-        self.sink.set_volume(self.sink.volume() + 0.2);
+        self.volume += 0.2;
+        self.set_volume();
     }
 
     pub fn lower_volume(&mut self) {
-        self.sink.set_volume(self.sink.volume() - 0.2);
+        self.volume -= 0.2;
+        self.set_volume();
     }
 
     pub fn stop(&mut self) {
@@ -307,24 +324,9 @@ impl Queue {
     }
 }
 
-fn handle_message(msg: &Message, tx: &Sender<Key>) {
-    if let Some(member) = msg.member() {
-        match member.to_string().as_str() {
-            "Play" |
-            "Pause" |
-            "PlayPause" => tx.send(Key::Char(' ')).unwrap(),
-            "Next" => tx.send(Key::Right).unwrap(),
-            "Previous" => tx.send(Key::Left).unwrap(),
-            "Shuffle" => tx.send(Key::Char('s')).unwrap(),
-            _ => {}
-        }
-    }
-}
-
 fn main() {
-
     let (tx, rx) = channel();
-    
+
     let tx2 = tx.clone();
     std::thread::spawn(move || {
         for key in stdin().keys() {
@@ -334,7 +336,7 @@ fn main() {
 
     let mut queue = if let Some(path) = env::args().nth(1) {
         let path = Path::new(&path);
-        
+
         if path.is_dir() {
             Queue::load_dir(path)
         } else {
@@ -346,36 +348,195 @@ fn main() {
 
     queue.queue_all();
 
-    let mut rule = MatchRule::new().with_interface("org.mpris.MediaPlayer2.Player");
+    let conn = LocalConnection::new_session().unwrap();
+    conn.request_name("org.mpris.MediaPlayer2.cramp", false, true, false)
+        .expect("Failed to register dbus name");
 
-    let conn = Connection::new_session().unwrap();
-    let proxy = conn.with_proxy("org.mpris.MediaPlayer2.cramp", "/org/mpris/MediaPlayer2", Duration::new(5, 0));
+    let f = Factory::new_fn::<()>();
 
-    let result: Result<(), dbus::Error> = proxy.method_call("org.freedesktop.DBus.Monitoring", "BecomeMonitor", (vec!(rule.match_str()), 0u32));
+    let tx_next = tx.clone();
+    let tx_prev = tx.clone();
+    let tx_play = tx.clone();
+    let tx_pause = tx.clone();
+    let tx_playpause = tx.clone();
+    let tx_stop = tx.clone();
+    let tree = f.tree(()).add(
+        f.object_path("/org/mpris/MediaPlayer2", ())
+            .introspectable()
+            .add(
+                f.interface("org.mpris.MediaPlayer2", ())
+                    .add_m(f.method("Quit", (), |_| std::process::exit(0)))
+                    .add_m(f.method("Raise", (), |_| {
+                        Err(MethodErr::no_method("Raise is not supported by cramp"))
+                    }))
+                    .add_p(
+                        f.property::<bool, _>("CanQuit", ())
+                            .on_get(|i, _| Ok(i.append(true))),
+                    )
+                    .add_p(
+                        f.property::<bool, _>("CanRaise", ())
+                            .on_get(|i, _| Ok(i.append(false))),
+                    )
+                    .add_p(
+                        f.property::<bool, _>("HasTrackList", ())
+                            .on_get(|i, _| Ok(i.append(false))),
+                    )
+                    .add_p(
+                        f.property::<&'static str, _>("Identity", ())
+                            .on_get(|i, _| Ok(i.append("cramp"))),
+                    )
+                    .add_p(
+                        f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
+                            .on_get(|i, _| Ok(i.append(vec!["file"]))),
+                    )
+                    .add_p(
+                        f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
+                            .on_get(|i, _| {
+                                Ok(i.append(vec![
+                                    "audio/mpeg",
+                                    "audio/ogg",
+                                    "audio/wav",
+                                    "audio/flac",
+                                    "audio/vorbis",
+                                ]))
+                            }),
+                    ),
+            )
+            .introspectable()
+            .add(
+                f.interface("org.mpris.MediaPlayer2.Player", ())
+                    .add_m(f.method("Next", (), move |_| {
+                        tx_next.send(Key::Right).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(f.method("Previous", (), move |_| {
+                        tx_prev.send(Key::Left).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(f.method("Play", (), move |_| {
+                        tx_play.send(Key::Char('\n')).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(f.method("Pause", (), move |_| {
+                        tx_pause.send(Key::Char('p')).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(f.method("PlayPause", (), move |_| {
+                        tx_playpause.send(Key::Char(' ')).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(f.method("Stop", (), move |_| {
+                        tx_stop.send(Key::Char('x')).unwrap();
+                        Ok(vec![])
+                    }))
+                    .add_m(
+                        f.method("Seek", (), |_| {
+                            Err(MethodErr::failed(
+                                "Seeking is currently unsupported by cramp",
+                            ))
+                        })
+                        .inarg::<u32, _>("Offset"),
+                    )
+                    .add_m(
+                        f.method("SetPosition", (), |_| {
+                            Err(MethodErr::failed(
+                                "Setting position is currently unsupported by cramp",
+                            ))
+                        })
+                        .inarg::<&str, _>("TrackId")
+                        .inarg::<u32, _>("Position"),
+                    )
+                    .add_m(
+                        f.method("OpenUri", (), |_| {
+                            Err(MethodErr::failed(
+                                "Opening a URI is currently unsupported by cramp",
+                            ))
+                        })
+                        .inarg::<&str, _>("Uri"),
+                    )
+                    .add_p(f.property::<&str, _>("PlaybackStatus", ()).on_get(|_, _| {
+                        Err(MethodErr::no_property(
+                            "PlaybackStatus is currently unsupported by cramp",
+                        ))
+                    }))
+                    .add_p(
+                        f.property::<f64, _>("Rate", ())
+                            .on_get(|_, _| {
+                                Err(MethodErr::no_property(
+                                    "Rate is currently unsupported by cramp",
+                                ))
+                            })
+                            .on_set(|_, _| {
+                                Err(MethodErr::no_property(
+                                    "Rate is currently unsupported by cramp",
+                                ))
+                            }),
+                    )
+                    .add_p(
+                        f.property::<f64, _>("Volume", ())
+                            .on_get(|_, _| {
+                                Err(MethodErr::no_property(
+                                    "Volume is currently unsupported by cramp",
+                                ))
+                            })
+                            .on_set(|_, _| {
+                                Err(MethodErr::no_property(
+                                    "Volume is currently unsupported by cramp",
+                                ))
+                            }),
+                    )
+                    .add_p(f.property::<u32, _>("Position", ()).on_get(|_, _| {
+                        Err(MethodErr::no_property(
+                            "Position is currently unsupported by cramp",
+                        ))
+                    }))
+                    .add_p(f.property::<u32, _>("MinimumRate", ()).on_get(|_, _| {
+                        Err(MethodErr::no_property(
+                            "MinimumRate is currently unsupported by cramp",
+                        ))
+                    }))
+                    .add_p(f.property::<u32, _>("MaximumRate", ()).on_get(|_, _| {
+                        Err(MethodErr::no_property(
+                            "MaximumRate is currently unsupported by cramp",
+                        ))
+                    }))
+                    .add_p(f.property::<bool, _>("CanGoNext", ()).on_get(|i, _| {
+                        i.append(true);
+                        Ok(())
+                    }))
+                    .add_p(f.property::<bool, _>("CanGoPrevious", ()).on_get(|i, _| {
+                        i.append(true);
+                        Ok(())
+                    }))
+                    .add_p(f.property::<bool, _>("CanPlay", ()).on_get(|i, _| {
+                        i.append(true);
+                        Ok(())
+                    }))
+                    .add_p(f.property::<bool, _>("CanPause", ()).on_get(|i, _| {
+                        i.append(true);
+                        Ok(())
+                    }))
+                    .add_p(f.property::<bool, _>("CanSeek", ()).on_get(|i, _| {
+                        i.append(false);
+                        Ok(())
+                    }))
+                    .add_p(f.property::<bool, _>("CanControl", ()).on_get(|i, _| {
+                        i.append(true);
+                        Ok(())
+                    })),
+            )
+            .introspectable(),
+    ).add(f.object_path("/", ()).introspectable());
 
-    let tx2 = tx.clone();
-    if result.is_ok() {
-        // Start matching using new scheme
-        conn.start_receive(rule, Box::new(move |msg, _| {
-            handle_message(&msg, &tx2);
-            true
-        }));
-    } else {
-        // Start matching using old scheme
-        rule.eavesdrop = true; // this lets us eavesdrop on *all* session messages, not just ours
-        conn.add_match(rule, move |_: (), _, msg| {
-            handle_message(&msg, &tx2);
-            true
-        }).expect("add_match failed");
-    }
-    
+    tree.start_receive(&conn);
+
     let mut drawer = cod::Drawer::from(stdout().into_raw_mode().unwrap());
     loop {
+        conn.process(Duration::from_millis(200)).unwrap();
         if !queue.paused() && queue.empty() {
             queue.next();
         }
 
-        conn.process(Duration::from_millis(1000)).unwrap();
         while let Ok(key) = rx.try_recv() {
             match key {
                 Key::Char(' ') => queue.play_pause(),
@@ -383,6 +544,14 @@ fn main() {
                 Key::Char('\n') => queue.play(),
 
                 Key::Char('s') => queue.shuffle(),
+
+                Key::Char('x') => {
+                    queue.pause();
+                    queue.sink.stop();
+                    if let Some(song) = &queue.current {
+                        queue.sink.append(song.open().unwrap());
+                    }
+                }
 
                 Key::Left => queue.last(),
                 Key::Right => queue.next(),
@@ -409,11 +578,7 @@ fn main() {
         drawer.text(
             format!(
                 "{}{}",
-                if queue.sink.is_paused() {
-                    "||"
-                } else {
-                    " >"
-                },
+                if queue.sink.is_paused() { "||" } else { " >" },
                 if queue.sink.empty() {
                     "\n  (no song)"
                 } else {
@@ -431,7 +596,7 @@ fn main() {
 
         drawer.bot();
         drawer.flush();
-    
+
         std::thread::sleep(Duration::from_millis(200));
     }
 }
