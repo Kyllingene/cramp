@@ -3,13 +3,12 @@ use std::fmt::Debug;
 use std::fs::{read_dir, read_to_string, File};
 use std::io::{self, stdin, stdout, BufReader};
 use std::path::Path;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use dbus::blocking::{Connection, LocalConnection};
+use crossbeam_channel::unbounded;
+use dbus::blocking::LocalConnection;
 use dbus::MethodErr;
-use dbus_tree::Factory;
+use dbus_tree::{Access, Factory};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rodio::{Decoder, OutputStream, Sink};
@@ -17,10 +16,33 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
+#[derive(Debug, Clone)]
+enum Message {
+    SetVolume(f64),
+    GetVolume,
+
+    SetRate(f64),
+    GetRate,
+
+    GetStatus,
+
+    Play,
+    Pause,
+    PlayPause,
+    Next,
+    Prev,
+    Stop,
+    Shuffle,
+    Exit,
+
+    OpenUri(String),
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Song {
     pub file: String,
     pub name: String,
+    save_name: Option<String>,
 
     pub next: Option<String>,
 
@@ -36,6 +58,7 @@ impl Song {
     ) -> Self {
         Self {
             file: file.to_string(),
+            save_name: name.as_ref().map(|s| s.to_string()),
             name: name.map_or_else(
                 || {
                     Path::new(&file.to_string())
@@ -106,7 +129,6 @@ struct Queue {
     past: Vec<Song>,
 
     volume: f32,
-    rate: f32,
 
     sink: Sink,
     _stream: OutputStream,
@@ -128,7 +150,6 @@ impl Default for Queue {
             past: Vec::with_capacity(100),
 
             volume: 1.0,
-            rate: 1.0,
 
             sink,
             _stream,
@@ -160,17 +181,15 @@ impl Queue {
                     length = Some(l);
                 }
 
-                if let Some(n) = bits.get(1) {
-                    name = Some(*n);
-                }
-            } else if line.starts_with("::") {
-                last.as_mut().map(|s| s.next = Some(line[2..].to_string()));
+                name = Some(bits.into_iter().skip(1).collect::<Vec<&str>>().join(","));
+            } else if line.starts_with("#::") { // TODO: make more compatible with M3U standards
+                last.as_mut().map(|s| s.next = Some(line[3..].to_string()));
             } else {
                 if let Some(last) = last.take() {
                     songs.push(last);
                 }
 
-                last = Some(Song::new(line, name, None, length));
+                last = Some(Song::new(line.to_string(), name.take(), None, length));
             }
         }
 
@@ -209,18 +228,27 @@ impl Queue {
         use std::io::Write;
         let mut file = File::create(path).unwrap();
 
+        writeln!(file, "#EXTM3U").unwrap();
         for song in &self.songs {
-            write!(file, "{}", song.file).unwrap();
+            if let Some(name) = &song.save_name {
+                writeln!(file, "#EXTINF:{},{name}", song.length.unwrap_or(0)).unwrap();
+            }
 
             if let Some(next) = &song.next {
-                write!(file, "\n::{next}\n").unwrap();
-            } else {
-                writeln!(file).unwrap();
+                writeln!(file, "#::{next}").unwrap();
             }
+
+            writeln!(file, "{}", song.file).unwrap();
         }
     }
 
     pub fn play(&mut self) {
+        if self.sink.empty() {
+            if let Some(song) = &self.current {
+                self.sink.append(song.open().unwrap());
+            }
+        }
+
         self.sink.play();
     }
 
@@ -236,26 +264,18 @@ impl Queue {
         }
     }
 
-    pub fn set_volume(&mut self) {
-        self.sink.set_volume(self.volume);
-    }
-
-    pub fn raise_volume(&mut self) {
-        self.volume += 0.2;
-        self.set_volume();
-    }
-
-    pub fn lower_volume(&mut self) {
-        self.volume -= 0.2;
-        self.set_volume();
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume;
+        self.sink.set_volume(volume);
     }
 
     pub fn stop(&mut self) {
         self.sink.stop();
+        self.pause();
     }
 
     pub fn next(&mut self) {
-        self.stop();
+        self.sink.stop();
 
         if let Some(song) = self.current.take() {
             self.past.push(song);
@@ -283,7 +303,7 @@ impl Queue {
     }
 
     pub fn last(&mut self) {
-        self.stop();
+        self.sink.stop();
         if let Some(song) = self.current.take() {
             if let Some(song) = self.next.take() {
                 self.queue.push(song.song);
@@ -296,10 +316,6 @@ impl Queue {
         if let Some(song) = &self.current {
             self.sink.append(song.open().unwrap());
         }
-    }
-
-    pub fn add_song(&mut self, song: Song) {
-        self.songs.push(song);
     }
 
     pub fn shuffle(&mut self) {
@@ -315,22 +331,52 @@ impl Queue {
         self.sink.empty()
     }
 
-    pub fn volume(&self) -> f32 {
-        self.sink.volume()
+    pub fn volume(&self) -> f64 {
+        self.sink.volume() as f64
     }
 
     pub fn paused(&self) -> bool {
         self.sink.is_paused()
     }
+
+    pub fn add_file<P: AsRef<Path>>(&mut self, file: P) -> io::Result<()> {
+        let file = file.as_ref();
+
+        if file.is_file() {
+            self.songs.push(Song::new(file.display(), None, None, None));
+        }
+
+        Ok(())
+    }
 }
 
 fn main() {
-    let (tx, rx) = channel();
+    let (tx, rx) = unbounded();
 
     let tx2 = tx.clone();
     std::thread::spawn(move || {
         for key in stdin().keys() {
-            tx2.send(key.unwrap()).unwrap();
+            if let Ok(key) = key {
+                match key {
+                    Key::Char(' ') => tx2.send(Message::PlayPause).unwrap(),
+                    Key::Char('p') => tx2.send(Message::Pause).unwrap(),
+                    Key::Char('\n') => tx2.send(Message::Play).unwrap(),
+
+                    Key::Char('s') => tx2.send(Message::Shuffle).unwrap(),
+
+                    Key::Char('x') => tx2.send(Message::Stop).unwrap(),
+
+                    Key::Left => tx2.send(Message::Prev).unwrap(),
+                    Key::Right => tx2.send(Message::Next).unwrap(),
+
+                    Key::Char('q') | Key::Esc => {
+                        tx2.send(Message::Exit).unwrap();
+                        return;
+                    }
+
+                    _ => {}
+                }
+            }
         }
     });
 
@@ -360,217 +406,310 @@ fn main() {
     let tx_pause = tx.clone();
     let tx_playpause = tx.clone();
     let tx_stop = tx.clone();
-    let tree = f.tree(()).add(
-        f.object_path("/org/mpris/MediaPlayer2", ())
-            .introspectable()
+
+    let tx_get_vol = tx.clone();
+    let tx_set_vol = tx.clone();
+    let (tx_vol, rx_vol) = unbounded();
+    let tx_get_rate = tx.clone();
+    let tx_set_rate = tx.clone();
+    let (tx_rate, rx_rate) = unbounded();
+    let tx_get_stat = tx.clone();
+    let tx_set_shuf = tx.clone();
+    let (tx_stat, rx_stat) = unbounded();
+    let tx_open_uri = tx.clone();
+
+    let tree =
+        f.tree(())
             .add(
-                f.interface("org.mpris.MediaPlayer2", ())
-                    .add_m(f.method("Quit", (), |_| std::process::exit(0)))
-                    .add_m(f.method("Raise", (), |_| {
-                        Err(MethodErr::no_method("Raise is not supported by cramp"))
-                    }))
-                    .add_p(
-                        f.property::<bool, _>("CanQuit", ())
-                            .on_get(|i, _| Ok(i.append(true))),
+                f.object_path("/org/mpris/MediaPlayer2", ())
+                    .introspectable()
+                    .add(
+                        f.interface("org.mpris.MediaPlayer2", ())
+                            .add_m(f.method("Quit", (), |_| std::process::exit(0)))
+                            .add_m(f.method("Raise", (), |m| Ok(vec!(m.msg.method_return()))))
+                            .add_p(
+                                f.property::<bool, _>("CanQuit", ())
+                                    .on_get(|i, _| Ok(i.append(true))),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanRaise", ())
+                                    .on_get(|i, _| Ok(i.append(false))),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("HasTrackList", ())
+                                    .on_get(|i, _| Ok(i.append(false))),
+                            )
+                            .add_p(
+                                f.property::<&'static str, _>("Identity", ())
+                                    .on_get(|i, _| Ok(i.append("cramp"))),
+                            )
+                            .add_p(
+                                f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
+                                    .on_get(|i, _| Ok(i.append(vec!["file"]))),
+                            )
+                            .add_p(
+                                f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
+                                    .on_get(|i, _| {
+                                        Ok(i.append(vec![
+                                            "audio/mpeg",
+                                            "audio/ogg",
+                                            "audio/wav",
+                                            "audio/flac",
+                                            "audio/vorbis",
+                                        ]))
+                                    }),
+                            ),
                     )
-                    .add_p(
-                        f.property::<bool, _>("CanRaise", ())
-                            .on_get(|i, _| Ok(i.append(false))),
+                    .introspectable()
+                    .add(
+                        f.interface("org.mpris.MediaPlayer2.Player", ())
+                            .add_m(f.method("Next", (), move |m| {
+                                tx_next.send(Message::Next).unwrap();
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(f.method("Previous", (), move |m| {
+                                tx_prev.send(Message::Prev).unwrap();
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(f.method("Play", (), move |m| {
+                                tx_play.send(Message::Play).unwrap();
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(f.method("Pause", (), move |m| {
+                                tx_pause.send(Message::Pause).unwrap();
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(f.method("PlayPause", (), move |m| {
+                                tx_playpause.send(Message::PlayPause).unwrap();
+                                eprintln!("PLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED\nPLAY-PAUSED");
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(f.method("Stop", (), move |m| {
+                                tx_stop.send(Message::Stop).unwrap();
+                                Ok(vec!(m.msg.method_return()))
+                            }))
+                            .add_m(
+                                f.method("Seek", (), |m| Ok(vec!(m.msg.method_return())))
+                                    .inarg::<i32, _>("Offset"),
+                            )
+                            .add_m(
+                                f.method("SetPosition", (), |m| Ok(vec!(m.msg.method_return())))
+                                    .inarg::<&str, _>("TrackId")
+                                    .inarg::<i64, _>("Position"),
+                            )
+                            .add_m(
+                                f.method("OpenUri", (), move |m| {
+                                    tx_open_uri
+                                        .send(Message::OpenUri(m.msg.read1::<&str>()?.to_string()))
+                                        .map_err(|e| MethodErr::failed(&e))?;
+                                    
+                                    Ok(vec!(m.msg.method_return()))
+                                }).inarg::<&str, _>("Uri"),
+                            )
+                            .add_p(f.property::<&str, _>("PlaybackStatus", ()).on_get(
+                                move |i, _| {
+                                    // i.append("Playing");
+                                    // return Ok(());
+
+                                    tx_get_stat
+                                        .send(Message::GetStatus)
+                                        .map_err(|e| MethodErr::failed(&e))?;
+
+                                    let stat = rx_stat
+                                        .recv_timeout(Duration::from_millis(200))
+                                        .map_err(|e| MethodErr::failed(&e))?;
+                                    i.append(stat);
+                                    Ok(())
+                                },
+                            ))
+                            .add_p(
+                                f.property::<f64, _>("Rate", ())
+                                    .access(Access::ReadWrite)
+                                    .on_get(move |i, _| {
+                                        // i.append(1.0);
+                                        // return Ok(());
+
+                                        tx_get_rate
+                                            .send(Message::GetRate)
+                                            .map_err(|e| MethodErr::failed(&e))?;
+
+                                        let rate = rx_rate
+                                            .recv_timeout(Duration::from_millis(200))
+                                            .map_err(|e| MethodErr::failed(&e))?;
+                                        i.append(rate);
+                                        Ok(())
+                                    })
+                                    .on_set(move |i, _| {
+                                        tx_set_rate
+                                            .send(Message::SetRate(i.read()?))
+                                            .map_err(|e| MethodErr::failed(&e))?;
+
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<f64, _>("Volume", ())
+                                    .access(Access::ReadWrite)
+                                    .on_get(move |i, _| {
+                                        // i.append(1.0);
+                                        // return Ok(());
+
+                                        tx_get_vol
+                                            .send(Message::GetVolume)
+                                            .map_err(|e| MethodErr::failed(&e.to_string()))?;
+
+                                        let vol = rx_vol
+                                            .recv_timeout(Duration::from_millis(200))
+                                            .map_err(|e| MethodErr::failed(&e.to_string()))?;
+                                        i.append(vol);
+                                        Ok(())
+                                    })
+                                    .on_set(move |i, _| {
+                                        tx_set_vol
+                                            .send(Message::SetVolume(i.read()?))
+                                            .map_err(|e| MethodErr::failed(&e.to_string()))?;
+
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("Shuffle", ())
+                                    .access(Access::ReadWrite)
+                                    .on_get(move |i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    })
+                                    .on_set(move |_, _| {
+                                        tx_set_shuf
+                                            .send(Message::Shuffle)
+                                            .map_err(|e| MethodErr::failed(&e.to_string()))?;
+
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<i64, _>("Position", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(0i64);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<f64, _>("MinimumRate", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(1.0);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<f64, _>("MaximumRate", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(1.0);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanGoNext", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanGoPrevious", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanPlay", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanPause", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanSeek", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(false);
+                                        Ok(())
+                                    }),
+                            )
+                            .add_p(
+                                f.property::<bool, _>("CanControl", ())
+                                    .access(Access::Read)
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
+                            ),
                     )
-                    .add_p(
-                        f.property::<bool, _>("HasTrackList", ())
-                            .on_get(|i, _| Ok(i.append(false))),
-                    )
-                    .add_p(
-                        f.property::<&'static str, _>("Identity", ())
-                            .on_get(|i, _| Ok(i.append("cramp"))),
-                    )
-                    .add_p(
-                        f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
-                            .on_get(|i, _| Ok(i.append(vec!["file"]))),
-                    )
-                    .add_p(
-                        f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
-                            .on_get(|i, _| {
-                                Ok(i.append(vec![
-                                    "audio/mpeg",
-                                    "audio/ogg",
-                                    "audio/wav",
-                                    "audio/flac",
-                                    "audio/vorbis",
-                                ]))
-                            }),
-                    ),
+                    .introspectable(),
             )
-            .introspectable()
-            .add(
-                f.interface("org.mpris.MediaPlayer2.Player", ())
-                    .add_m(f.method("Next", (), move |_| {
-                        tx_next.send(Key::Right).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(f.method("Previous", (), move |_| {
-                        tx_prev.send(Key::Left).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(f.method("Play", (), move |_| {
-                        tx_play.send(Key::Char('\n')).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(f.method("Pause", (), move |_| {
-                        tx_pause.send(Key::Char('p')).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(f.method("PlayPause", (), move |_| {
-                        tx_playpause.send(Key::Char(' ')).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(f.method("Stop", (), move |_| {
-                        tx_stop.send(Key::Char('x')).unwrap();
-                        Ok(vec![])
-                    }))
-                    .add_m(
-                        f.method("Seek", (), |_| {
-                            Err(MethodErr::failed(
-                                "Seeking is currently unsupported by cramp",
-                            ))
-                        })
-                        .inarg::<u32, _>("Offset"),
-                    )
-                    .add_m(
-                        f.method("SetPosition", (), |_| {
-                            Err(MethodErr::failed(
-                                "Setting position is currently unsupported by cramp",
-                            ))
-                        })
-                        .inarg::<&str, _>("TrackId")
-                        .inarg::<u32, _>("Position"),
-                    )
-                    .add_m(
-                        f.method("OpenUri", (), |_| {
-                            Err(MethodErr::failed(
-                                "Opening a URI is currently unsupported by cramp",
-                            ))
-                        })
-                        .inarg::<&str, _>("Uri"),
-                    )
-                    .add_p(f.property::<&str, _>("PlaybackStatus", ()).on_get(|_, _| {
-                        Err(MethodErr::no_property(
-                            "PlaybackStatus is currently unsupported by cramp",
-                        ))
-                    }))
-                    .add_p(
-                        f.property::<f64, _>("Rate", ())
-                            .on_get(|_, _| {
-                                Err(MethodErr::no_property(
-                                    "Rate is currently unsupported by cramp",
-                                ))
-                            })
-                            .on_set(|_, _| {
-                                Err(MethodErr::no_property(
-                                    "Rate is currently unsupported by cramp",
-                                ))
-                            }),
-                    )
-                    .add_p(
-                        f.property::<f64, _>("Volume", ())
-                            .on_get(|_, _| {
-                                Err(MethodErr::no_property(
-                                    "Volume is currently unsupported by cramp",
-                                ))
-                            })
-                            .on_set(|_, _| {
-                                Err(MethodErr::no_property(
-                                    "Volume is currently unsupported by cramp",
-                                ))
-                            }),
-                    )
-                    .add_p(f.property::<u32, _>("Position", ()).on_get(|_, _| {
-                        Err(MethodErr::no_property(
-                            "Position is currently unsupported by cramp",
-                        ))
-                    }))
-                    .add_p(f.property::<u32, _>("MinimumRate", ()).on_get(|_, _| {
-                        Err(MethodErr::no_property(
-                            "MinimumRate is currently unsupported by cramp",
-                        ))
-                    }))
-                    .add_p(f.property::<u32, _>("MaximumRate", ()).on_get(|_, _| {
-                        Err(MethodErr::no_property(
-                            "MaximumRate is currently unsupported by cramp",
-                        ))
-                    }))
-                    .add_p(f.property::<bool, _>("CanGoNext", ()).on_get(|i, _| {
-                        i.append(true);
-                        Ok(())
-                    }))
-                    .add_p(f.property::<bool, _>("CanGoPrevious", ()).on_get(|i, _| {
-                        i.append(true);
-                        Ok(())
-                    }))
-                    .add_p(f.property::<bool, _>("CanPlay", ()).on_get(|i, _| {
-                        i.append(true);
-                        Ok(())
-                    }))
-                    .add_p(f.property::<bool, _>("CanPause", ()).on_get(|i, _| {
-                        i.append(true);
-                        Ok(())
-                    }))
-                    .add_p(f.property::<bool, _>("CanSeek", ()).on_get(|i, _| {
-                        i.append(false);
-                        Ok(())
-                    }))
-                    .add_p(f.property::<bool, _>("CanControl", ()).on_get(|i, _| {
-                        i.append(true);
-                        Ok(())
-                    })),
-            )
-            .introspectable(),
-    ).add(f.object_path("/", ()).introspectable());
+            .add(f.object_path("/", ()).introspectable());
 
     tree.start_receive(&conn);
-
     let mut drawer = cod::Drawer::from(stdout().into_raw_mode().unwrap());
     loop {
         conn.process(Duration::from_millis(200)).unwrap();
-        if !queue.paused() && queue.empty() {
+        if !queue.paused() && queue.empty() && queue.current.is_none() {
             queue.next();
         }
 
-        while let Ok(key) = rx.try_recv() {
-            match key {
-                Key::Char(' ') => queue.play_pause(),
-                Key::Char('p') => queue.pause(),
-                Key::Char('\n') => queue.play(),
+        while let Ok(message) = rx.try_recv() {
+            match message {
+                Message::GetVolume => tx_vol.send(queue.volume()).unwrap(),
+                Message::SetVolume(vol) => queue.set_volume(vol as f32),
 
-                Key::Char('s') => queue.shuffle(),
+                Message::GetRate => tx_rate.send(queue.sink.speed() as f64).unwrap(),
+                Message::SetRate(rate) => queue.sink.set_speed(rate as f32),
 
-                Key::Char('x') => {
-                    queue.pause();
-                    queue.sink.stop();
-                    if let Some(song) = &queue.current {
-                        queue.sink.append(song.open().unwrap());
-                    }
-                }
+                Message::GetStatus => tx_stat
+                    .send(if queue.empty() {
+                        "Stopped"
+                    } else if queue.paused() {
+                        "Paused"
+                    } else {
+                        "Playing"
+                    })
+                    .unwrap(),
 
-                Key::Left => queue.last(),
-                Key::Right => queue.next(),
+                Message::Play => queue.play(),
+                Message::Pause => queue.pause(),
+                Message::PlayPause => queue.play_pause(),
+                Message::Next => queue.next(),
+                Message::Prev => queue.last(),
+                Message::Stop => queue.stop(),
+                Message::Shuffle => queue.shuffle(),
 
-                Key::Up => queue.raise_volume(),
-                Key::Down => queue.lower_volume(),
+                Message::OpenUri(uri) => queue.add_file(uri).unwrap(),
 
-                Key::Char('q') | Key::Esc => {
+                Message::Exit => {
                     queue.stop();
                     return;
                 }
-
-                _ => {}
             }
         }
 
         drawer.clear();
 
-        drawer.text("> ".chars(), 0, 1);
+        drawer.pixel('<', 0, 1);
         if let Some(song) = &queue.current {
             drawer.text(song.name.chars(), 3, 1);
         }
