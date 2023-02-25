@@ -75,8 +75,8 @@ impl Song {
     }
 
     pub fn open(&self) -> io::Result<Decoder<BufReader<File>>> {
-        Ok(Decoder::new(BufReader::new(File::open(&self.file)?))
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?)
+        Decoder::new(BufReader::new(File::open(&self.file)?))
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
     }
 }
 
@@ -182,8 +182,11 @@ impl Queue {
                 }
 
                 name = Some(bits.into_iter().skip(1).collect::<Vec<&str>>().join(","));
-            } else if line.starts_with("#::") { // TODO: make more compatible with M3U standards
-                last.as_mut().map(|s| s.next = Some(line[3..].to_string()));
+            } else if let Some(line) = line.strip_prefix("#::") {
+                // TODO: make more compatible with M3U standards
+                if let Some(s) = last.as_mut() {
+                    s.next = Some(line[3..].to_string());
+                }
             } else {
                 if let Some(last) = last.take() {
                     songs.push(last);
@@ -355,27 +358,25 @@ fn main() {
 
     let tx2 = tx.clone();
     std::thread::spawn(move || {
-        for key in stdin().keys() {
-            if let Ok(key) = key {
-                match key {
-                    Key::Char(' ') => tx2.send(Message::PlayPause).unwrap(),
-                    Key::Char('p') => tx2.send(Message::Pause).unwrap(),
-                    Key::Char('\n') => tx2.send(Message::Play).unwrap(),
+    for key in stdin().keys().flatten() {
+            match key {
+                Key::Char(' ') => tx2.send(Message::PlayPause).unwrap(),
+                Key::Char('p') => tx2.send(Message::Pause).unwrap(),
+                Key::Char('\n') => tx2.send(Message::Play).unwrap(),
 
-                    Key::Char('s') => tx2.send(Message::Shuffle).unwrap(),
+                Key::Char('s') => tx2.send(Message::Shuffle).unwrap(),
 
-                    Key::Char('x') => tx2.send(Message::Stop).unwrap(),
+                Key::Char('x') => tx2.send(Message::Stop).unwrap(),
 
-                    Key::Left => tx2.send(Message::Prev).unwrap(),
-                    Key::Right => tx2.send(Message::Next).unwrap(),
+                Key::Left => tx2.send(Message::Prev).unwrap(),
+                Key::Right => tx2.send(Message::Next).unwrap(),
 
-                    Key::Char('q') | Key::Esc => {
-                        tx2.send(Message::Exit).unwrap();
-                        return;
-                    }
-
-                    _ => {}
+                Key::Char('q') | Key::Esc => {
+                    tx2.send(Message::Exit).unwrap();
+                    return;
                 }
+
+                _ => {}
             }
         }
     });
@@ -416,7 +417,7 @@ fn main() {
     let tx_get_stat = tx.clone();
     let tx_set_shuf = tx.clone();
     let (tx_stat, rx_stat) = unbounded();
-    let tx_open_uri = tx.clone();
+    let tx_open_uri = tx;
 
     let tree =
         f.tree(())
@@ -429,34 +430,50 @@ fn main() {
                             .add_m(f.method("Raise", (), |m| Ok(vec!(m.msg.method_return()))))
                             .add_p(
                                 f.property::<bool, _>("CanQuit", ())
-                                    .on_get(|i, _| Ok(i.append(true))),
+                                    .on_get(|i, _| {
+                                        i.append(true);
+                                        Ok(())
+                                    }),
                             )
                             .add_p(
                                 f.property::<bool, _>("CanRaise", ())
-                                    .on_get(|i, _| Ok(i.append(false))),
+                                    .on_get(|i, _| {
+                                        i.append(false);
+                                        Ok(())
+                                    }),
                             )
                             .add_p(
                                 f.property::<bool, _>("HasTrackList", ())
-                                    .on_get(|i, _| Ok(i.append(false))),
+                                    .on_get(|i, _| {
+                                        i.append(false);
+                                        Ok(())
+                                    }),
                             )
                             .add_p(
                                 f.property::<&'static str, _>("Identity", ())
-                                    .on_get(|i, _| Ok(i.append("cramp"))),
+                                    .on_get(|i, _| {
+                                        i.append("cramp");
+                                        Ok(())
+                                    }),
                             )
                             .add_p(
                                 f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
-                                    .on_get(|i, _| Ok(i.append(vec!["file"]))),
+                                    .on_get(|i, _| {
+                                        i.append(vec!["file"]);
+                                        Ok(())
+                                    }),
                             )
                             .add_p(
                                 f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
                                     .on_get(|i, _| {
-                                        Ok(i.append(vec![
+                                        i.append(vec![
                                             "audio/mpeg",
                                             "audio/ogg",
                                             "audio/wav",
                                             "audio/flac",
                                             "audio/vorbis",
-                                        ]))
+                                        ]);
+                                        Ok(())
                                     }),
                             ),
                     )
@@ -502,15 +519,12 @@ fn main() {
                                     tx_open_uri
                                         .send(Message::OpenUri(m.msg.read1::<&str>()?.to_string()))
                                         .map_err(|e| MethodErr::failed(&e))?;
-                                    
+
                                     Ok(vec!(m.msg.method_return()))
                                 }).inarg::<&str, _>("Uri"),
                             )
                             .add_p(f.property::<&str, _>("PlaybackStatus", ()).on_get(
                                 move |i, _| {
-                                    // i.append("Playing");
-                                    // return Ok(());
-
                                     tx_get_stat
                                         .send(Message::GetStatus)
                                         .map_err(|e| MethodErr::failed(&e))?;
@@ -526,9 +540,6 @@ fn main() {
                                 f.property::<f64, _>("Rate", ())
                                     .access(Access::ReadWrite)
                                     .on_get(move |i, _| {
-                                        // i.append(1.0);
-                                        // return Ok(());
-
                                         tx_get_rate
                                             .send(Message::GetRate)
                                             .map_err(|e| MethodErr::failed(&e))?;
@@ -551,9 +562,6 @@ fn main() {
                                 f.property::<f64, _>("Volume", ())
                                     .access(Access::ReadWrite)
                                     .on_get(move |i, _| {
-                                        // i.append(1.0);
-                                        // return Ok(());
-
                                         tx_get_vol
                                             .send(Message::GetVolume)
                                             .map_err(|e| MethodErr::failed(&e.to_string()))?;
