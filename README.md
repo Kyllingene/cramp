@@ -1,38 +1,46 @@
 # cramp
-## cool(?) rust audio / music player - INDEV
+## Custom rust audio / music player
 
-#### currently implemented:
- - a basic gui + searchable (no fzf, sorry) song list
- - opening and playing a folder of music
+The definining feature of cramp is that it's mine. I am only too glad to accept
+feature suggestions and pull reqeusts, but the whole reason I made this is to
+have unorthodox features in my own player. If there's a feature I don't need, I
+probably won't implement it.
+
+However, I am (again) happy to accept suggestions or help. If this somehow
+reaches anyone else, I will expand the scope of the project to make it more
+public-friendly. Until then, expect bugs, inconveniences, and incongruities.
+
+#### Features:
+ - a decent gui + strictly-searchable song list
+ - opening and playing a folder of music or M3U playlist
  - basic shuffle
  - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec, with some features only boilerplate-implemented (Seek, Position, etc.), except `Metadata`
- - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only one tag (`#EXTINF:<length>,<name>`) supported for now
- - two custom M3U tags:
-   - `#EXTNEXT:<next-song-uri>` to denote a "back-to-back" song (see below)
-   - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
+ - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only `#EXTINF` is supported for now
  - a 100-song history
+ - two custom M3U tags:
+   - `#EXTNEXT:<next-song-uri>` to denote a "back-to-back" song
+     - song A always selects song B as the next song
+   - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
 
-#### roadmap:
- - the MPRIS `Metadata` property
+#### Roadmap:
  - a more robust interface
-    - ability to browse/create/save playlists
-    - ability to search through a playlist
-    - ability to set "back-to-back" songs from the tui
-        - example: whenever you play song A, regardless of shuffle/queue, always plays song B next
+    - playback position + seeking
+    - fully-featured and ergonomic playlist management
+ - the MPRIS `Metadata` property
  - more customized features
+ - configuration?
     - maybe plugin support?
 
-#### non-goals:
+#### Non-goals:
  - a tui (or at least not a good one)
- - a web build (how would that work?)
+ - a web build
  - streaming support (use pulseaudio)
  - a daemon (like mpd)
- - playing web resources (sorry, download it or find another music player)
+ - playing web resources (sorry, download it or find another player)
  - more complex playlist support (probably)
+ - playing audio streams
 
-#### known bugs:
- - an inexplicable alsa-related crash, that's top priority at the moment
-    - possibly has something to do with long songs and timeouts
+#### Known bugs:
  - you have to send several MPRIS messages to get cramp to start responding
-    - various other MPRIS-related bugs, sorry, that's not top priority
+    - other MPRIS-related bugs, sorry, that's not top priority
  - probably loads more, be patient (or better, help out)

@@ -225,10 +225,14 @@ impl App for Player {
                                             Some(mem::take(&mut self.to_add_next))
                                         };
 
-                                        queue.songs.push(
-                                            Song::new(add, None, next, None)
-                                                .noshuffle(self.to_add_noshuffle),
-                                        );
+                                        let song = Song::new(add, None, next, None)
+                                            .noshuffle(self.to_add_noshuffle);
+
+                                        if song.name.contains(&self.search) {
+                                            self.results.push(song.clone());
+                                        }
+
+                                        queue.songs.push(song);
                                     }
                                 }
                             }
