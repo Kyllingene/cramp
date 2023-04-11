@@ -670,13 +670,14 @@ dependencies = [
 
 [[package]]
 name = "cramp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "crossbeam-channel",
  "dbus",
  "dbus-crossroads",
  "dbus-tree",
  "eframe",
+ "egui_file",
  "rand",
  "rayon",
  "rodio",
@@ -910,6 +911,15 @@ dependencies = [
  "tracing",
  "webbrowser",
  "winit",
+]
+
+[[package]]
+name = "egui_file"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "667861bdb6d3eb3f010f06f81aea27877b925757c47b875d5d205d747942c2fa"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

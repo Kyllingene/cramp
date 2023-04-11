@@ -1,18 +1,17 @@
 [package]
 name = "cramp"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# cod = { git = "https://github.com/kyllingene/cod.git" }
-crossbeam-channel = "0.5.6"
+crossbeam-channel = "0.5"
 dbus = { version = "0.9", features = ["futures"]}
 dbus-crossroads = "0.5"
-dbus-tree = "0.9.2"
-eframe = "0.21.3"
-rand = "0.8.5"
-rayon = "1.7.0"
+dbus-tree = "0.9"
+eframe = "0.21"
+egui_file = "0.8"
+rand = "0.8"
+rayon = "1.7"
 rodio = "0.17"
-# termion = "2.0"

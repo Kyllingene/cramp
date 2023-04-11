@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::unbounded;
 
 mod ui;
-// mod input;
 mod mpris;
 mod process;
 mod queue;
@@ -37,22 +36,15 @@ pub enum Message {
     OpenUri(String),
 }
 
-// #[derive(Debug, Clone)]
-// pub struct Draw {
-//     song: Option<String>,
-//     next: Option<String>,
-
-//     paused: bool,
-//     empty: bool,
-// }
-
 fn main() {
+    let mut playlist = None;
     let mut queue = if let Some(path) = env::args().nth(1) {
         let path = Path::new(&path);
 
         if path.is_dir() {
             Queue::load_dir(path)
         } else {
+            playlist = Some(path.to_path_buf());
             Queue::load(path)
         }
     } else {
@@ -67,5 +59,5 @@ fn main() {
     
     process::process(Arc::clone(&queue), tx.clone(), rx);
 
-    ui::ui(Arc::clone(&queue), tx);
+    ui::ui(Arc::clone(&queue), tx, playlist);
 }

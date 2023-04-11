@@ -7,7 +7,9 @@
  - basic shuffle
  - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec, with some features only boilerplate-implemented (Seek, Position, etc.), except `Metadata`
  - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only one tag (`#EXTINF:<length>,<name>`) supported for now
- - a custom "M3U" tag (starts with `#EXTNEXT:<next-song-uri>`) to denote a "back-to-back" song (see below)
+ - two custom M3U tags:
+   - `#EXTNEXT:<next-song-uri>` to denote a "back-to-back" song (see below)
+   - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
  - a 100-song history
 
 #### roadmap:

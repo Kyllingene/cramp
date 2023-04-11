@@ -19,6 +19,9 @@ pub struct Song {
 
     // the length of the song in microseconds
     pub length: Option<u128>,
+
+    // prevents the song from being played normally if the queue is shuffled
+    pub noshuffle: bool,
 }
 
 impl Song {
@@ -46,7 +49,14 @@ impl Song {
             ),
             next: next.map(|s| s.to_string()),
             length,
+            noshuffle: false,
         }
+    }
+
+    // set song.noshuffle
+    pub fn noshuffle(mut self, noshuffle: bool) -> Self {
+        self.noshuffle = noshuffle;
+        self
     }
 
     // open a song (returns a rodio-ready decoder)

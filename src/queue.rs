@@ -1,5 +1,6 @@
 use std::fs::{read_dir, read_to_string, File};
 use std::io;
+use std::mem::replace;
 use std::path::Path;
 
 use rand::{seq::SliceRandom, thread_rng};
@@ -63,8 +64,9 @@ impl Queue {
     }
 
     // load a song from a playlist file
-    // supports the M3U `#EXTINF <length-in-seconds>,<name>` flag, as well as
-    // a custom `#::<next-song>` flag
+    // supports the M3U #EXTINF flag, as well as
+    // a custom `#EXTNEXT:<next-song>` flag, and
+    // a custom `#EXTNOSHUFFLE` flag
     pub fn load<P: AsRef<Path>>(file: P) -> Self {
         let mut queue = Queue::new();
 
@@ -75,8 +77,13 @@ impl Queue {
         let mut length = None;
         let mut name = None;
         let mut next = None;
+        let mut noshuffle = false;
 
         for line in data.lines() {
+            if line.is_empty() {
+                continue;
+            }
+
             if let Some(line) = line.strip_prefix("#EXTINF:") {
                 let bits = line.split(',').collect::<Vec<&str>>();
 
@@ -92,16 +99,17 @@ impl Queue {
                 if Path::new(&givenname).parent().map_or(true, |p| p.as_os_str().is_empty()) {
                     name = Some(givenname);
                 }
-            } else if let Some(line) = line.strip_prefix("#::") {
-                // TODO: make more compatible with M3U standards
+            } else if let Some(line) = line.strip_prefix("#EXTNEXT:") {
                 next = Some(line.to_string());
+            } else if line.strip_prefix("#EXTNOSHUFFLE").is_some() {
+                noshuffle = true;
             } else if !line.starts_with("#") {
                 songs.push(Song::new(
                     line.to_string(),
                     name.take(),
                     next.take(),
                     length,
-                ));
+                ).noshuffle(replace(&mut noshuffle, false)));
             }
         }
 
@@ -134,7 +142,7 @@ impl Queue {
         songs
     }
 
-    // save the current playlist to a file, respecting
+    // save the current playlist to a file, saving
     // all M3U flags that cramp supports
     pub fn save_playlist<P: AsRef<Path>>(&self, path: P) {
         use std::io::Write;
@@ -147,7 +155,11 @@ impl Queue {
             }
 
             if let Some(next) = &song.next {
-                writeln!(file, "#::{next}").unwrap();
+                writeln!(file, "#EXTNEXT:{next}").unwrap();
+            }
+
+            if song.noshuffle {
+                writeln!(file, "#EXTNOSHUFFLE").unwrap();
             }
 
             writeln!(file, "{}", song.file).unwrap();
@@ -186,10 +198,6 @@ impl Queue {
         self.pause();
     }
 
-    // stops the current song, adds it to self.past,
-    // sets current to next, sets next to queue.pop,
-    // if queue is empty, sets it to songs, truncates past
-    // (not entirely in that order)
     pub fn next(&mut self) {
         self.sink.stop();
 
@@ -213,12 +221,39 @@ impl Queue {
             self.sink.append(song.data);
         }
 
-        // if the current song has a preferred next song, set next to that
+
+        // if the new song has a preferred next song, set next to that
         self.next = if let Some(Some(next)) = &self.current.as_ref().map(|s| s.next.clone()) {
             if let Some(song) = self.songs.iter_mut().find(|s| &s.file == next) {
                 song.into()
+            } else if self.shuffle {
+                if let Some((i, _)) = self.queue
+                    .iter()
+                    .enumerate()
+                    .find(|(_, s)| !s.noshuffle)
+                {
+                    self.queue.remove(i).into()
+                } else if let Some(song) = self.queue.pop() {
+                    song.into()
+                } else {
+                    None
+                }
+            } else if let Some(song) = self.queue.pop() {
+                song.into()
             } else {
-                LoadedSong::from(self.queue.pop())
+                None
+            }
+        } else if self.shuffle {
+            if let Some((i, _)) = self.queue
+                .iter()
+                .enumerate()
+                .find(|(_, s)| !s.noshuffle)
+            {
+                self.queue.remove(i).into()
+            } else if let Some(song) = self.queue.pop() {
+                song.into()
+            } else {
+                None
             }
         } else if let Some(song) = self.queue.pop() {
             song.into()
