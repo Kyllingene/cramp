@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use crossbeam_channel::{Sender, unbounded};
+use crossbeam_channel::{unbounded, Sender};
 use dbus::{blocking::LocalConnection, MethodErr};
-use dbus_tree::{Factory, Access};
+use dbus_tree::{Access, Factory};
 
 use crate::Message;
 
@@ -12,8 +12,7 @@ pub struct MprisRecv {
     pub shuf: Sender<bool>,
     pub stat: Sender<&'static str>,
 
-
-    pub conn: LocalConnection
+    pub conn: LocalConnection,
 }
 
 pub fn mpris(tx: Sender<Message>) -> MprisRecv {
@@ -296,12 +295,12 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
 
     tree.start_receive(&conn);
 
-    MprisRecv{
+    MprisRecv {
         vol: tx_vol,
         rate: tx_rate,
         shuf: tx_shuf,
         stat: tx_stat,
-        
+
         conn,
     }
 }

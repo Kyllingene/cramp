@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam_channel::unbounded;
 
-mod ui;
 mod mpris;
 mod process;
 mod queue;
 mod song;
+mod ui;
 
 use queue::Queue;
 
@@ -56,7 +56,7 @@ fn main() {
     let queue = Arc::new(Mutex::new(queue));
 
     let (tx, rx) = unbounded();
-    
+
     process::process(Arc::clone(&queue), tx.clone(), rx);
 
     ui::ui(Arc::clone(&queue), tx, playlist);

@@ -1,5 +1,5 @@
 use std::{
-    mem::replace,
+    mem,
     path::{Path, PathBuf},
     process::exit,
     sync::{Arc, Mutex},
@@ -104,21 +104,23 @@ impl App for Player {
                     egui::ScrollArea::horizontal()
                         .id_source("controls")
                         .show(ui, |ui| {
-                            if ui.button(if queue.shuffle {
-                                "Unshuffle"
-                            } else {
-                                "Shuffle"
-                            }).clicked() {
+                            if ui
+                                .button(if queue.shuffle {
+                                    "Unshuffle"
+                                } else {
+                                    "Shuffle"
+                                })
+                                .clicked()
+                            {
                                 queue.shuffle();
                             }
 
                             ui.label(if queue.paused() { "Paused" } else { "Playing" });
 
-                            if ui.button(if queue.paused() {
-                                "Play"
-                            } else {
-                                "Pause"
-                            }).clicked() {
+                            if ui
+                                .button(if queue.paused() { "Play" } else { "Pause" })
+                                .clicked()
+                            {
                                 queue.play_pause();
                             }
 
@@ -181,7 +183,9 @@ impl App for Player {
                                     } else if ui.button("Play").clicked() {
                                         queue.stop();
                                         if let Some(next) = &song.next {
-                                            if let Some(song) = queue.songs.iter().find(|s| &s.file == next) {
+                                            if let Some(song) =
+                                                queue.songs.iter().find(|s| &s.file == next)
+                                            {
                                                 queue.next = song.clone().into();
                                             }
                                         }
@@ -202,7 +206,7 @@ impl App for Player {
                         }
                     } else {
                         ui.text_edit_singleline(&mut self.to_add);
-                        
+
                         ui.checkbox(&mut self.to_add_noshuffle, "Dont autoplay in shuffle");
 
                         ui.label("Next");
@@ -211,17 +215,19 @@ impl App for Player {
                         if ui.button("Add").clicked() {
                             self.adding = false;
 
-                            let add = replace(&mut self.to_add, String::new());
+                            let add = mem::take(&mut self.to_add);
 
                             if Path::new(&add).is_file() {
                                 let next = if self.to_add_next.is_empty() {
                                     None
                                 } else {
-                                    Some(replace(&mut self.to_add_next, String::new()))
+                                    Some(mem::take(&mut self.to_add_next))
                                 };
 
-                                queue.songs.push(Song::new(add, None, next, None)
-                                    .noshuffle(self.to_add_noshuffle));
+                                queue.songs.push(
+                                    Song::new(add, None, next, None)
+                                        .noshuffle(self.to_add_noshuffle),
+                                );
                             }
                         }
                     }

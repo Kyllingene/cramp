@@ -1,6 +1,6 @@
 use std::fs::{read_dir, read_to_string, File};
 use std::io;
-use std::mem::replace;
+use std::mem;
 use std::path::Path;
 
 use rand::{seq::SliceRandom, thread_rng};
@@ -96,20 +96,21 @@ impl Queue {
                 // this is because m3u names are often just full paths,
                 // so make sure it's not a path before setting it as the name
                 let givenname = bits.into_iter().skip(1).collect::<Vec<&str>>().join(",");
-                if Path::new(&givenname).parent().map_or(true, |p| p.as_os_str().is_empty()) {
+                if Path::new(&givenname)
+                    .parent()
+                    .map_or(true, |p| p.as_os_str().is_empty())
+                {
                     name = Some(givenname);
                 }
             } else if let Some(line) = line.strip_prefix("#EXTNEXT:") {
                 next = Some(line.to_string());
             } else if line.strip_prefix("#EXTNOSHUFFLE").is_some() {
                 noshuffle = true;
-            } else if !line.starts_with("#") {
-                songs.push(Song::new(
-                    line.to_string(),
-                    name.take(),
-                    next.take(),
-                    length,
-                ).noshuffle(replace(&mut noshuffle, false)));
+            } else if !line.starts_with('#') {
+                songs.push(
+                    Song::new(line.to_string(), name.take(), next.take(), length)
+                        .noshuffle(mem::take(&mut noshuffle)),
+                );
             }
         }
 
@@ -221,17 +222,12 @@ impl Queue {
             self.sink.append(song.data);
         }
 
-
         // if the new song has a preferred next song, set next to that
         self.next = if let Some(Some(next)) = &self.current.as_ref().map(|s| s.next.clone()) {
             if let Some(song) = self.songs.iter_mut().find(|s| &s.file == next) {
                 song.into()
             } else if self.shuffle {
-                if let Some((i, _)) = self.queue
-                    .iter()
-                    .enumerate()
-                    .find(|(_, s)| !s.noshuffle)
-                {
+                if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
                     self.queue.remove(i).into()
                 } else if let Some(song) = self.queue.pop() {
                     song.into()
@@ -244,11 +240,7 @@ impl Queue {
                 None
             }
         } else if self.shuffle {
-            if let Some((i, _)) = self.queue
-                .iter()
-                .enumerate()
-                .find(|(_, s)| !s.noshuffle)
-            {
+            if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
                 self.queue.remove(i).into()
             } else if let Some(song) = self.queue.pop() {
                 song.into()

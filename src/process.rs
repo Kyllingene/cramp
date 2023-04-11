@@ -1,4 +1,7 @@
-use std::{sync::{Arc, Mutex}, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -28,7 +31,8 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                     Message::SetRate(rate) => queue.set_speed(rate as f32),
 
                     Message::GetShuffle => mpris.shuf.send(queue.shuffle).unwrap(),
-                    Message::GetStatus => mpris.stat
+                    Message::GetStatus => mpris
+                        .stat
                         .send(if queue.empty() {
                             "Stopped"
                         } else if queue.paused() {
