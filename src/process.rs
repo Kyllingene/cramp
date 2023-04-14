@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use std::sync::mpsc::{Receiver, Sender};
 use dbus::arg::{PropMap, Variant};
+use std::sync::mpsc::{Receiver, Sender};
 
 use crate::{mpris, queue::Queue, Message};
 

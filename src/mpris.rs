@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 // use crossbeam_channel::{unbounded, Sender};
-use std::sync::mpsc::{channel, Sender};
 use dbus::{arg::PropMap, blocking::Connection, MethodErr};
 use dbus_crossroads::{Context, Crossroads};
+use std::sync::mpsc::{channel, Sender};
 
 use crate::Message;
 

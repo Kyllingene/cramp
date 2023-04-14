@@ -1,8 +1,8 @@
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 use eframe::egui::{self, Layout};
 use eframe::emath::Align;
