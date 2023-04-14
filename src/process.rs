@@ -42,7 +42,10 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
 
                         if let Some(current) = &queue.current {
                             map.insert("mpris:trackid".to_string(), Variant(Box::new(current.id)));
-                            map.insert("xesam:title".to_string(), Variant(Box::new(current.name.clone())));
+                            map.insert(
+                                "xesam:title".to_string(),
+                                Variant(Box::new(current.name.clone())),
+                            );
 
                             if let Some(Ok(length)) = current.length.map(|l| l.try_into()) {
                                 let length: u64 = length;

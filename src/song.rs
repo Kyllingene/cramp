@@ -94,12 +94,14 @@ impl Clone for Song {
             name: self.name.clone(),
             save_name: self.save_name.clone(),
             next: self.next.clone(),
-            length: self.length.clone(),
-            noshuffle: self.noshuffle.clone(),
-            id: self.id.wrapping_add(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs()),
+            length: self.length,
+            noshuffle: self.noshuffle,
+            id: self.id.wrapping_add(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            ),
         }
     }
 }

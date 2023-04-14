@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crossbeam_channel::{unbounded, Sender};
-use dbus::{blocking::Connection, MethodErr, arg::PropMap};
+use dbus::{arg::PropMap, blocking::Connection, MethodErr};
 use dbus_crossroads::{Context, Crossroads};
 
 use crate::Message;
@@ -236,18 +236,17 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
                 Ok(Some(shuf))
             });
 
-        b.property("Metadata")
-            .get(move |_, _| {
-                tx_get_meta
-                    .send(Message::GetMetadata)
-                    .map_err(|e| MethodErr::failed(&e))?;
+        b.property("Metadata").get(move |_, _| {
+            tx_get_meta
+                .send(Message::GetMetadata)
+                .map_err(|e| MethodErr::failed(&e))?;
 
-                let meta = rx_meta
-                    .recv_timeout(Duration::from_millis(200))
-                    .map_err(|e| MethodErr::failed(&e))?;
+            let meta = rx_meta
+                .recv_timeout(Duration::from_millis(200))
+                .map_err(|e| MethodErr::failed(&e))?;
 
-                Ok(meta)
-            });
+            Ok(meta)
+        });
 
         b.property("Position").get(|_, _| Ok(0i64));
 
