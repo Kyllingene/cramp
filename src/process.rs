@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crossbeam_channel::{Receiver, Sender};
+use dbus::arg::{PropMap, Variant};
 
 use crate::{mpris, queue::Queue, Message};
 
@@ -35,6 +36,22 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                             "Playing"
                         })
                         .unwrap(),
+
+                    Message::GetMetadata => {
+                        let mut map = PropMap::new();
+
+                        if let Some(current) = &queue.current {
+                            map.insert("mpris:trackid".to_string(), Variant(Box::new(current.id)));
+                            map.insert("xesam:title".to_string(), Variant(Box::new(current.name.clone())));
+
+                            if let Some(Ok(length)) = current.length.map(|l| l.try_into()) {
+                                let length: u64 = length;
+                                map.insert("mpris:length".to_string(), Variant(Box::new(length)));
+                            }
+                        }
+
+                        mpris.meta.send(map).unwrap();
+                    }
 
                     Message::Play => queue.play(),
                     Message::Pause => queue.pause(),

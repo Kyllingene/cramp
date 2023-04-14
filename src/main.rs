@@ -23,6 +23,7 @@ pub enum Message {
 
     GetShuffle,
     GetStatus,
+    GetMetadata,
 
     Play,
     Pause,

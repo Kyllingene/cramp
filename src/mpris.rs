@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crossbeam_channel::{unbounded, Sender};
-use dbus::{blocking::Connection, MethodErr};
+use dbus::{blocking::Connection, MethodErr, arg::PropMap};
 use dbus_crossroads::{Context, Crossroads};
 
 use crate::Message;
@@ -11,6 +11,7 @@ pub struct MprisRecv {
     pub rate: Sender<f64>,
     pub shuf: Sender<bool>,
     pub stat: Sender<&'static str>,
+    pub meta: Sender<PropMap>,
 }
 
 pub fn mpris(tx: Sender<Message>) -> MprisRecv {
@@ -42,7 +43,9 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
     let (tx_shuf, rx_shuf) = unbounded();
     let tx_get_stat = tx.clone();
     let (tx_stat, rx_stat) = unbounded();
-    let tx_open_uri = tx;
+    let tx_open_uri = tx.clone();
+    let tx_get_meta = tx;
+    let (tx_meta, rx_meta) = unbounded();
 
     let mut cr = Crossroads::new();
 
@@ -166,7 +169,7 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
                 .recv_timeout(Duration::from_millis(200))
                 .map_err(|e| MethodErr::failed(&e))?;
 
-            Ok((stat.to_string(),))
+            Ok(stat.to_string())
         });
 
         b.property("LoopStatus")
@@ -233,6 +236,19 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
                 Ok(Some(shuf))
             });
 
+        b.property("Metadata")
+            .get(move |_, _| {
+                tx_get_meta
+                    .send(Message::GetMetadata)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                let meta = rx_meta
+                    .recv_timeout(Duration::from_millis(200))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(meta)
+            });
+
         b.property("Position").get(|_, _| Ok(0i64));
 
         b.property("MinimumRate").get(|_, _| Ok(0f64));
@@ -261,5 +277,6 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
         rate: tx_rate,
         shuf: tx_shuf,
         stat: tx_stat,
+        meta: tx_meta,
     }
 }
