@@ -44,70 +44,6 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
     let (tx_stat, rx_stat) = unbounded();
     let tx_open_uri = tx;
 
-    // let f = Factory::new_fn::<()>();
-    // let tree =
-    //     f.tree(())
-    //         .add(
-    //             f.object_path("/org/mpris/MediaPlayer2", ())
-    //                 .introspectable()
-    //                 .add(
-    //                     f.interface("org.mpris.MediaPlayer2", ())
-    //                         .add_m(f.method("Quit", (), move |_| {
-    //                             tx_exit.send(Message::Exit).unwrap();
-    //                             std::process::exit(0);
-    //                         }))
-    //                         .add_m(f.method("Raise", (), |m| Ok(vec![m.msg.method_return()])))
-    //                         .add_p(f.property::<bool, _>("CanQuit", ()).on_get(|i, _| {
-    //                             i.append(true);
-    //                             Ok(())
-    //                         }))
-    //                         .add_p(f.property::<bool, _>("CanRaise", ()).on_get(|i, _| {
-    //                             i.append(false);
-    //                             Ok(())
-    //                         }))
-    //                         .add_p(f.property::<bool, _>("HasTrackList", ()).on_get(|i, _| {
-    //                             i.append(false);
-    //                             Ok(())
-    //                         }))
-    //                         .add_p(
-    //                             f.property::<&'static str, _>("Identity", ())
-    //                                 .on_get(|i, _| {
-    //                                     i.append("cramp");
-    //                                     Ok(())
-    //                                 }),
-    //                         )
-    //                         .add_p(
-    //                             f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
-    //                                 .on_get(|i, _| {
-    //                                     i.append(vec!["file"]);
-    //                                     Ok(())
-    //                                 }),
-    //                         )
-    //                         .add_p(
-    //                             f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
-    //                                 .on_get(|i, _| {
-    //                                     i.append(vec![
-    //                                         "audio/mpeg",
-    //                                         "audio/ogg",
-    //                                         "audio/wav",
-    //                                         "audio/flac",
-    //                                         "audio/vorbis",
-    //                                     ]);
-    //                                     Ok(())
-    //                                 }),
-    //                         ),
-    //                 )
-    //                 .introspectable()
-    //                 .add(
-    //                     f.interface("org.mpris.MediaPlayer2.Player", ())
-    //
-    //                 )
-    //                 .introspectable(),
-    //         )
-    //         .add(f.object_path("/", ()).introspectable());
-
-    // tree.start_receive(&conn);
-
     let mut cr = Crossroads::new();
 
     let root_iface = cr.register("org.mpris.MediaPlayer2", |b| {
@@ -232,6 +168,13 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
 
             Ok((stat.to_string(),))
         });
+
+        b.property("LoopStatus")
+            .get(move |_, _| {
+                Ok("Playlist".to_string()) 
+            }).set(move |_, _, l| {
+                Ok(Some(l))
+            });
 
         b.property("Rate")
             .get(move |_, _| {

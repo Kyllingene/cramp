@@ -14,7 +14,9 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
  - a decent gui + strictly-searchable song list
  - opening and playing a folder of music or M3U playlist
  - basic shuffle
- - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec, with some features only boilerplate-implemented (Seek, Position, etc.), except `Metadata`
+ - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec
+    - some features only boilerplate-implemented (Seek, etc.)
+    - `Metadata` is conspicuously missing
  - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only `#EXTINF` is supported for now
  - a 100-song history
  - two custom M3U tags:
