@@ -170,11 +170,8 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
         });
 
         b.property("LoopStatus")
-            .get(move |_, _| {
-                Ok("Playlist".to_string()) 
-            }).set(move |_, _, l| {
-                Ok(Some(l))
-            });
+            .get(move |_, _| Ok("Playlist".to_string()))
+            .set(move |_, _, l| Ok(Some(l)));
 
         b.property("Rate")
             .get(move |_, _| {
