@@ -1,12 +1,11 @@
 [package]
 name = "cramp"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam-channel = "0.5"
 dbus = { version = "0.9"}
 dbus-crossroads = "0.5"
 eframe = "0.21"

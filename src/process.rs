@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crossbeam_channel::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 use dbus::arg::{PropMap, Variant};
 
 use crate::{mpris, queue::Queue, Message};

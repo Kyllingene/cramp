@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crossbeam_channel::unbounded;
+use std::sync::mpsc::channel;
 
 mod mpris;
 mod process;
@@ -56,7 +56,7 @@ fn main() {
 
     let queue = Arc::new(Mutex::new(queue));
 
-    let (tx, rx) = unbounded();
+    let (tx, rx) = channel();
 
     process::process(Arc::clone(&queue), tx.clone(), rx);
 

@@ -1,16 +1,12 @@
-use std::{
-    mem,
-    path::{Path, PathBuf},
-    process::exit,
-    sync::{Arc, Mutex},
-};
+use std::mem;
+use std::path::{Path, PathBuf};
+use std::process::exit;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 
-use crossbeam_channel::Sender;
-use eframe::{
-    egui::{self, Layout},
-    emath::Align,
-    App,
-};
+use eframe::egui::{self, Layout};
+use eframe::emath::Align;
+use eframe::App;
 use rayon::prelude::*;
 
 use crate::{queue::Queue, song::Song, Message};
