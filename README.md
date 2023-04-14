@@ -23,11 +23,14 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
    - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
 
 #### Roadmap:
+ - implement `Seek` and `Metadata`
  - a more robust interface
     - playback position + seeking
     - fully-featured and ergonomic playlist management
- - the MPRIS `Metadata` property
+      - possibly validating MPRIS `Playlists`
  - more customized features
+ - a CLI
+ - implement `TrackList`
  - configuration?
     - maybe plugin support?
 
@@ -35,12 +38,9 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
  - a tui (or at least not a good one)
  - a web build
  - streaming support (use pulseaudio)
- - a daemon (like mpd)
  - playing web resources (sorry, download it or find another player)
- - more complex playlist support (probably)
  - playing audio streams
 
 #### Known bugs:
- - you have to send several MPRIS messages to get cramp to start responding
-    - other MPRIS-related bugs, sorry, that's not top priority
- - probably loads more, be patient (or better, help out)
+I don't know of any bugs just now, [open an issue](https://github.com/kyllingene/issue/new)
+if you find one.

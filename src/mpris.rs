@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crossbeam_channel::{unbounded, Sender};
-use dbus::{blocking::LocalConnection, MethodErr};
-use dbus_tree::{Access, Factory};
+use dbus::{blocking::Connection, MethodErr};
+use dbus_crossroads::{Context, Crossroads};
 
 use crate::Message;
 
@@ -11,17 +11,19 @@ pub struct MprisRecv {
     pub rate: Sender<f64>,
     pub shuf: Sender<bool>,
     pub stat: Sender<&'static str>,
-
-    pub conn: LocalConnection,
 }
 
 pub fn mpris(tx: Sender<Message>) -> MprisRecv {
-    let conn = LocalConnection::new_session().unwrap();
-    conn.request_name("org.mpris.MediaPlayer2.cramp", false, true, false)
+    let conn = Connection::new_session().unwrap();
+
+    let name = format!(
+        "org.mpris.MediaPlayer2.cramp.instance{}",
+        std::process::id()
+    );
+    conn.request_name(name, false, true, false)
         .expect("Failed to register dbus name");
 
-    let f = Factory::new_fn::<()>();
-
+    let tx_exit = tx.clone();
     let tx_next = tx.clone();
     let tx_prev = tx.clone();
     let tx_play = tx.clone();
@@ -42,265 +44,282 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
     let (tx_stat, rx_stat) = unbounded();
     let tx_open_uri = tx;
 
-    let tree =
-        f.tree(())
-            .add(
-                f.object_path("/org/mpris/MediaPlayer2", ())
-                    .introspectable()
-                    .add(
-                        f.interface("org.mpris.MediaPlayer2", ())
-                            .add_m(f.method("Quit", (), |_| std::process::exit(0)))
-                            .add_m(f.method("Raise", (), |m| Ok(vec![m.msg.method_return()])))
-                            .add_p(f.property::<bool, _>("CanQuit", ()).on_get(|i, _| {
-                                i.append(true);
-                                Ok(())
-                            }))
-                            .add_p(f.property::<bool, _>("CanRaise", ()).on_get(|i, _| {
-                                i.append(false);
-                                Ok(())
-                            }))
-                            .add_p(f.property::<bool, _>("HasTrackList", ()).on_get(|i, _| {
-                                i.append(false);
-                                Ok(())
-                            }))
-                            .add_p(
-                                f.property::<&'static str, _>("Identity", ())
-                                    .on_get(|i, _| {
-                                        i.append("cramp");
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
-                                    .on_get(|i, _| {
-                                        i.append(vec!["file"]);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
-                                    .on_get(|i, _| {
-                                        i.append(vec![
-                                            "audio/mpeg",
-                                            "audio/ogg",
-                                            "audio/wav",
-                                            "audio/flac",
-                                            "audio/vorbis",
-                                        ]);
-                                        Ok(())
-                                    }),
-                            ),
-                    )
-                    .introspectable()
-                    .add(
-                        f.interface("org.mpris.MediaPlayer2.Player", ())
-                            .add_m(f.method("Next", (), move |m| {
-                                tx_next.send(Message::Next).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(f.method("Previous", (), move |m| {
-                                tx_prev.send(Message::Prev).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(f.method("Play", (), move |m| {
-                                tx_play.send(Message::Play).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(f.method("Pause", (), move |m| {
-                                tx_pause.send(Message::Pause).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(f.method("PlayPause", (), move |m| {
-                                tx_playpause.send(Message::PlayPause).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(f.method("Stop", (), move |m| {
-                                tx_stop.send(Message::Stop).unwrap();
-                                Ok(vec![m.msg.method_return()])
-                            }))
-                            .add_m(
-                                f.method("Seek", (), |m| Ok(vec![m.msg.method_return()]))
-                                    .inarg::<i32, _>("Offset"),
-                            )
-                            .add_m(
-                                f.method("SetPosition", (), |m| Ok(vec![m.msg.method_return()]))
-                                    .inarg::<&str, _>("TrackId")
-                                    .inarg::<i64, _>("Position"),
-                            )
-                            .add_m(
-                                f.method("OpenUri", (), move |m| {
-                                    tx_open_uri
-                                        .send(Message::OpenUri(m.msg.read1::<&str>()?.to_string()))
-                                        .map_err(|e| MethodErr::failed(&e))?;
+    // let f = Factory::new_fn::<()>();
+    // let tree =
+    //     f.tree(())
+    //         .add(
+    //             f.object_path("/org/mpris/MediaPlayer2", ())
+    //                 .introspectable()
+    //                 .add(
+    //                     f.interface("org.mpris.MediaPlayer2", ())
+    //                         .add_m(f.method("Quit", (), move |_| {
+    //                             tx_exit.send(Message::Exit).unwrap();
+    //                             std::process::exit(0);
+    //                         }))
+    //                         .add_m(f.method("Raise", (), |m| Ok(vec![m.msg.method_return()])))
+    //                         .add_p(f.property::<bool, _>("CanQuit", ()).on_get(|i, _| {
+    //                             i.append(true);
+    //                             Ok(())
+    //                         }))
+    //                         .add_p(f.property::<bool, _>("CanRaise", ()).on_get(|i, _| {
+    //                             i.append(false);
+    //                             Ok(())
+    //                         }))
+    //                         .add_p(f.property::<bool, _>("HasTrackList", ()).on_get(|i, _| {
+    //                             i.append(false);
+    //                             Ok(())
+    //                         }))
+    //                         .add_p(
+    //                             f.property::<&'static str, _>("Identity", ())
+    //                                 .on_get(|i, _| {
+    //                                     i.append("cramp");
+    //                                     Ok(())
+    //                                 }),
+    //                         )
+    //                         .add_p(
+    //                             f.property::<Vec<&'static str>, _>("SupportedUriSchemes", ())
+    //                                 .on_get(|i, _| {
+    //                                     i.append(vec!["file"]);
+    //                                     Ok(())
+    //                                 }),
+    //                         )
+    //                         .add_p(
+    //                             f.property::<Vec<&'static str>, _>("SupportedMimeTypes", ())
+    //                                 .on_get(|i, _| {
+    //                                     i.append(vec![
+    //                                         "audio/mpeg",
+    //                                         "audio/ogg",
+    //                                         "audio/wav",
+    //                                         "audio/flac",
+    //                                         "audio/vorbis",
+    //                                     ]);
+    //                                     Ok(())
+    //                                 }),
+    //                         ),
+    //                 )
+    //                 .introspectable()
+    //                 .add(
+    //                     f.interface("org.mpris.MediaPlayer2.Player", ())
+    //
+    //                 )
+    //                 .introspectable(),
+    //         )
+    //         .add(f.object_path("/", ()).introspectable());
 
-                                    Ok(vec![m.msg.method_return()])
-                                })
-                                .inarg::<&str, _>("Uri"),
-                            )
-                            .add_p(f.property::<&str, _>("PlaybackStatus", ()).on_get(
-                                move |i, _| {
-                                    tx_get_stat
-                                        .send(Message::GetStatus)
-                                        .map_err(|e| MethodErr::failed(&e))?;
+    // tree.start_receive(&conn);
 
-                                    let stat = rx_stat
-                                        .recv_timeout(Duration::from_millis(200))
-                                        .map_err(|e| MethodErr::failed(&e))?;
-                                    i.append(stat);
-                                    Ok(())
-                                },
-                            ))
-                            .add_p(
-                                f.property::<f64, _>("Rate", ())
-                                    .access(Access::ReadWrite)
-                                    .on_get(move |i, _| {
-                                        tx_get_rate
-                                            .send(Message::GetRate)
-                                            .map_err(|e| MethodErr::failed(&e))?;
+    let mut cr = Crossroads::new();
 
-                                        let rate = rx_rate
-                                            .recv_timeout(Duration::from_millis(200))
-                                            .map_err(|e| MethodErr::failed(&e))?;
-                                        i.append(rate);
-                                        Ok(())
-                                    })
-                                    .on_set(move |i, _| {
-                                        tx_set_rate
-                                            .send(Message::SetRate(i.read()?))
-                                            .map_err(|e| MethodErr::failed(&e))?;
+    let root_iface = cr.register("org.mpris.MediaPlayer2", |b| {
+        b.property("CanQuit")
+            .emits_changed_const()
+            .get(|_, _| Ok(true));
 
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<f64, _>("Volume", ())
-                                    .access(Access::ReadWrite)
-                                    .on_get(move |i, _| {
-                                        tx_get_vol
-                                            .send(Message::GetVolume)
-                                            .map_err(|e| MethodErr::failed(&e))?;
+        b.property("Fullscreen")
+            .emits_changed_const()
+            .get(|_, _| -> Result<bool, MethodErr> { Err(MethodErr::no_property("Fullscreen")) });
 
-                                        let vol = rx_vol
-                                            .recv_timeout(Duration::from_millis(200))
-                                            .map_err(|e| MethodErr::failed(&e))?;
-                                        i.append(vol);
-                                        Ok(())
-                                    })
-                                    .on_set(move |i, _| {
-                                        tx_set_vol
-                                            .send(Message::SetVolume(i.read()?))
-                                            .map_err(|e| MethodErr::failed(&e))?;
+        b.property("CanSetFullscreen").get(|_, _| Ok(false));
 
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("Shuffle", ())
-                                    .access(Access::ReadWrite)
-                                    .on_get(move |i, _| {
-                                        tx_get_shuf
-                                            .send(Message::GetShuffle)
-                                            .map_err(|e| MethodErr::failed(&e))?;
+        b.property("CanRaise")
+            .emits_changed_const()
+            .get(|_, _| Ok(true));
 
-                                        let shuf = rx_shuf
-                                            .recv_timeout(Duration::from_millis(200))
-                                            .map_err(|e| MethodErr::failed(&e))?;
-                                        i.append(shuf);
-                                        Ok(())
-                                    })
-                                    .on_set(move |_, _| {
-                                        tx_set_shuf
-                                            .send(Message::Shuffle)
-                                            .map_err(|e| MethodErr::failed(&e))?;
+        b.property("HasTrackList")
+            .emits_changed_const()
+            .get(|_, _| Ok(true));
 
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<i64, _>("Position", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(0i64);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<f64, _>("MinimumRate", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(1.0);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<f64, _>("MaximumRate", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(1.0);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanGoNext", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(true);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanGoPrevious", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(true);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanPlay", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(true);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanPause", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(true);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanSeek", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(false);
-                                        Ok(())
-                                    }),
-                            )
-                            .add_p(
-                                f.property::<bool, _>("CanControl", ())
-                                    .access(Access::Read)
-                                    .on_get(|i, _| {
-                                        i.append(true);
-                                        Ok(())
-                                    }),
-                            ),
-                    )
-                    .introspectable(),
-            )
-            .add(f.object_path("/", ()).introspectable());
+        b.property("Identity")
+            .emits_changed_const()
+            .get(|_, _| Ok((String::from("CRAMP"),)));
 
-    tree.start_receive(&conn);
+        b.property("DesktopEntry")
+            .emits_changed_const()
+            .get(|_, _| -> Result<bool, MethodErr> { Err(MethodErr::no_property("DesktopEntry")) });
+
+        b.property("SupportedUriSchemes")
+            .emits_changed_const()
+            .get(|_, _| Ok(vec!["file".to_string()]));
+
+        b.property("SupportedMimeTypes")
+            .emits_changed_const()
+            .get(|_, _| {
+                Ok((vec![
+                    "audio/mpeg".to_string(),
+                    "audio/ogg".to_string(),
+                    "audio/wav".to_string(),
+                    "audio/flac".to_string(),
+                    "audio/vorbis".to_string(),
+                ],))
+            });
+
+        b.method(
+            "Quit",
+            (),
+            (),
+            move |_: &mut Context, _, _: ()| -> Result<(), MethodErr> {
+                tx_exit.send(Message::Exit).unwrap();
+                std::process::exit(0);
+            },
+        );
+
+        b.method(
+            "Raise",
+            (),
+            (),
+            move |_: &mut Context, _, _: ()| -> Result<(), MethodErr> {
+                Err(MethodErr::no_method("Raise"))
+            },
+        );
+    });
+
+    let player_iface = cr.register("org.mpris.MediaPlayer2.Player", |b| {
+        b.method("Next", (), (), move |_, _, _: ()| {
+            tx_next.send(Message::Next).unwrap();
+            Ok(())
+        });
+
+        b.method("Previous", (), (), move |_, _, _: ()| {
+            tx_prev.send(Message::Prev).unwrap();
+            Ok(())
+        });
+
+        b.method("Play", (), (), move |_, _, _: ()| {
+            tx_play.send(Message::Play).unwrap();
+            Ok(())
+        });
+
+        b.method("Pause", (), (), move |_, _, _: ()| {
+            tx_pause.send(Message::Pause).unwrap();
+            Ok(())
+        });
+
+        b.method("PlayPause", (), (), move |_, _, _: ()| {
+            tx_playpause.send(Message::PlayPause).unwrap();
+            Ok(())
+        });
+
+        b.method("Stop", (), (), move |_, _, _: ()| {
+            tx_stop.send(Message::Stop).unwrap();
+            Ok(())
+        });
+
+        b.method("Seek", ("Offset",), (), |_, _, _: (i64,)| Ok(()));
+
+        b.method(
+            "SetPosition",
+            ("TrackId", "Position"),
+            (),
+            |_, _, _: (String, i64)| Ok(()),
+        );
+
+        b.method("OpenUri", ("Uri",), (), move |ctx, _, _: (String,)| {
+            tx_open_uri
+                .send(Message::OpenUri(ctx.message().read1::<&str>()?.to_string()))
+                .map_err(|e| MethodErr::failed(&e))?;
+
+            Ok(())
+        });
+
+        b.property("PlaybackStatus").get(move |_, _| {
+            tx_get_stat
+                .send(Message::GetStatus)
+                .map_err(|e| MethodErr::failed(&e))?;
+
+            let stat: &'static str = rx_stat
+                .recv_timeout(Duration::from_millis(200))
+                .map_err(|e| MethodErr::failed(&e))?;
+
+            Ok((stat.to_string(),))
+        });
+
+        b.property("Rate")
+            .get(move |_, _| {
+                tx_get_rate
+                    .send(Message::GetRate)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                let rate = rx_rate
+                    .recv_timeout(Duration::from_millis(200))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(rate)
+            })
+            .set(move |_, _, rate| {
+                tx_set_rate
+                    .send(Message::SetRate(rate))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(Some(rate))
+            });
+
+        b.property("Volume")
+            .get(move |_, _| {
+                tx_get_vol
+                    .send(Message::GetVolume)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                let vol = rx_vol
+                    .recv_timeout(Duration::from_millis(200))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(vol)
+            })
+            .set(move |_, _, vol| {
+                tx_set_vol
+                    .send(Message::SetVolume(vol))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(Some(vol))
+            });
+
+        b.property("Shuffle")
+            .get(move |_, _| {
+                tx_get_shuf
+                    .send(Message::GetShuffle)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                let shuf = rx_shuf
+                    .recv_timeout(Duration::from_millis(200))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(shuf)
+            })
+            .set(move |_, _, shuf| {
+                tx_set_shuf
+                    .send(Message::Shuffle)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(Some(shuf))
+            });
+
+        b.property("Position").get(|_, _| Ok(0i64));
+
+        b.property("MinimumRate").get(|_, _| Ok(0f64));
+
+        b.property("MaximumRate").get(|_, _| Ok(5f64));
+
+        b.property("CanGoNext").get(|_, _| Ok(true));
+
+        b.property("CanGoPrevious").get(|_, _| Ok(true));
+
+        b.property("CanPlay").get(|_, _| Ok(true));
+
+        b.property("CanPause").get(|_, _| Ok(true));
+
+        b.property("CanSeek").get(|_, _| Ok(false));
+
+        b.property("CanControl").get(|_, _| Ok(true));
+    });
+
+    cr.insert("/org/mpris/MediaPlayer2", &[root_iface, player_iface], ());
+
+    std::thread::spawn(move || cr.serve(&conn).unwrap());
 
     MprisRecv {
         vol: tx_vol,
         rate: tx_rate,
         shuf: tx_shuf,
         stat: tx_stat,
-
-        conn,
     }
 }

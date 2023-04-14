@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -11,9 +8,6 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
     std::thread::spawn(move || {
         let mpris = mpris::mpris(tx.clone());
         'mainloop: loop {
-            // handle MPRIS requests
-            mpris.conn.process(Duration::from_millis(500)).unwrap();
-
             // auto-next
             let mut queue = queue.lock().unwrap();
 
