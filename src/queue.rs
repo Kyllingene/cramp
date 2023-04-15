@@ -296,6 +296,12 @@ impl Queue {
     // sets next to current song, sets current to past.pop
     pub fn last(&mut self) {
         self.sink.stop();
+
+        if self.loop_mode == LoopMode::Track {
+            self.play();
+            return;
+        }
+                
         if let Some(song) = self.current.take() {
             if let Some(song) = self.next.take() {
                 self.queue.push(song.song);
