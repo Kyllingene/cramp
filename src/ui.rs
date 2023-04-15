@@ -118,7 +118,8 @@ impl App for Player {
                                     LoopMode::None => "Not looping",
                                     LoopMode::Playlist => "Looping by playlist",
                                     LoopMode::Track => "Looping by track",
-                                }).clicked()
+                                })
+                                .clicked()
                             {
                                 queue.loop_mode += 1;
                             }

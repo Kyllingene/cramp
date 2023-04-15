@@ -3,7 +3,11 @@ use std::sync::{Arc, Mutex};
 use dbus::arg::{PropMap, Variant};
 use std::sync::mpsc::{Receiver, Sender};
 
-use crate::{mpris, queue::{Queue, LoopMode}, Message};
+use crate::{
+    mpris,
+    queue::{LoopMode, Queue},
+    Message,
+};
 
 pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Message>) {
     std::thread::spawn(move || {

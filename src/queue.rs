@@ -15,7 +15,7 @@ pub enum LoopMode {
     #[default]
     None,
     Track,
-    Playlist
+    Playlist,
 }
 
 impl AddAssign<usize> for LoopMode {
@@ -338,10 +338,7 @@ impl Queue {
     }
 
     pub fn queue(&mut self, id: u64) {
-        if let Some(song) = self.songs.iter()
-            .find(|song| song.id == id)
-            .cloned()
-        {
+        if let Some(song) = self.songs.iter().find(|song| song.id == id).cloned() {
             self.queue.push(song);
         }
     }
