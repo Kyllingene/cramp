@@ -15,8 +15,7 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
  - opening and playing a folder of music or M3U playlist
  - basic shuffle
  - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec
-    - some features only boilerplate-implemented (Seek, etc.)
-    - `Metadata` is conspicuously missing
+    - seeking is currently not available, see [this issue](https://github.com/Kyllingene/cramp/issues/1)
  - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only `#EXTINF` is supported for now
  - a 100-song history
  - two custom M3U tags:
@@ -44,5 +43,7 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
  - playing audio streams
 
 #### Known bugs:
-I don't know of any bugs just now, [open an issue](https://github.com/kyllingene/issue/new)
+ - the MPRIS implementation doesn't emit the `PropertiesChanged` signal
+
+If you find a bug that isn't listed, [open an issue](https://github.com/kyllingene/issue/new)
 if you find one.

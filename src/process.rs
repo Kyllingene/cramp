@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use dbus::arg::{PropMap, Variant};
 use std::sync::mpsc::{Receiver, Sender};
 
-use crate::{mpris, queue::Queue, Message};
+use crate::{mpris, queue::{Queue, LoopMode}, Message};
 
 pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Message>) {
     std::thread::spawn(move || {
@@ -24,6 +24,14 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
 
                     Message::GetRate => mpris.rate.send(queue.speed() as f64).unwrap(),
                     Message::SetRate(rate) => queue.set_speed(rate as f32),
+
+                    Message::GetLoop => mpris.loop_mode.send(queue.loop_mode.to_string()).unwrap(),
+                    Message::SetLoop(loop_mode) => match loop_mode.as_str() {
+                        "None" => queue.loop_mode = LoopMode::None,
+                        "Track" => queue.loop_mode = LoopMode::Track,
+                        "Playlist" => queue.loop_mode = LoopMode::Playlist,
+                        _ => {}
+                    },
 
                     Message::GetShuffle => mpris.shuf.send(queue.shuffle).unwrap(),
                     Message::GetStatus => mpris

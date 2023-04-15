@@ -21,6 +21,9 @@ pub enum Message {
     SetRate(f64),
     GetRate,
 
+    SetLoop(String),
+    GetLoop,
+
     GetShuffle,
     GetStatus,
     GetMetadata,

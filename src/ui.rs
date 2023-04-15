@@ -9,6 +9,7 @@ use eframe::emath::Align;
 use eframe::App;
 use rayon::prelude::*;
 
+use crate::queue::LoopMode;
 use crate::{queue::Queue, song::Song, Message};
 
 pub fn ui(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, playlist: Option<PathBuf>) {
@@ -112,6 +113,16 @@ impl App for Player {
                                 queue.shuffle();
                             }
 
+                            if ui
+                                .button(match queue.loop_mode {
+                                    LoopMode::None => "Not looping",
+                                    LoopMode::Playlist => "Looping by playlist",
+                                    LoopMode::Track => "Looping by track",
+                                }).clicked()
+                            {
+                                queue.loop_mode += 1;
+                            }
+
                             ui.label(if queue.paused() { "Paused" } else { "Playing" });
 
                             if ui
@@ -190,6 +201,8 @@ impl App for Player {
                                                 queue.play();
                                             } else if ui.button("Next").clicked() {
                                                 queue.next = song.into();
+                                            } else if ui.button("Queue").clicked() {
+                                                queue.queue(song.id);
                                             }
                                         });
                                     }

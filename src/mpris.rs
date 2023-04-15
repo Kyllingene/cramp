@@ -13,6 +13,7 @@ pub struct MprisRecv {
     pub shuf: Sender<bool>,
     pub stat: Sender<&'static str>,
     pub meta: Sender<PropMap>,
+    pub loop_mode: Sender<String>,
 }
 
 pub fn mpris(tx: Sender<Message>) -> MprisRecv {
@@ -42,6 +43,9 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
     let tx_set_shuf = tx.clone();
     let tx_get_shuf = tx.clone();
     let (tx_shuf, rx_shuf) = channel();
+    let tx_set_loop_mode = tx.clone();
+    let tx_get_loop_mode = tx.clone();
+    let (tx_loop_mode, rx_loop_mode) = channel();
     let tx_get_stat = tx.clone();
     let (tx_stat, rx_stat) = channel();
     let tx_open_uri = tx.clone();
@@ -174,8 +178,24 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
         });
 
         b.property("LoopStatus")
-            .get(move |_, _| Ok("Playlist".to_string()))
-            .set(move |_, _, l| Ok(Some(l)));
+            .get(move |_, _| {
+                tx_get_loop_mode
+                    .send(Message::GetLoop)
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                let loop_mode: String = rx_loop_mode
+                    .recv_timeout(Duration::from_millis(200))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(loop_mode)
+            })
+            .set(move |_, _, loop_mode| {
+                tx_set_loop_mode
+                    .send(Message::SetLoop(loop_mode.clone()))
+                    .map_err(|e| MethodErr::failed(&e))?;
+
+                Ok(Some(loop_mode))
+            });
 
         b.property("Rate")
             .get(move |_, _| {
@@ -278,5 +298,6 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
         shuf: tx_shuf,
         stat: tx_stat,
         meta: tx_meta,
+        loop_mode: tx_loop_mode,
     }
 }

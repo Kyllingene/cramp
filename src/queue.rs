@@ -1,12 +1,41 @@
+use std::fmt::Display;
 use std::fs::{read_dir, read_to_string, File};
 use std::io;
 use std::mem;
+use std::ops::AddAssign;
 use std::path::Path;
 
 use rand::{seq::SliceRandom, thread_rng};
 use rodio::{OutputStream, Sink};
 
 use crate::song::{LoadedSong, Song};
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LoopMode {
+    #[default]
+    None,
+    Track,
+    Playlist
+}
+
+impl AddAssign<usize> for LoopMode {
+    fn add_assign(&mut self, rhs: usize) {
+        let modes = [Self::None, Self::Track, Self::Playlist];
+        let i = match self {
+            LoopMode::None => 0,
+            LoopMode::Track => 1,
+            LoopMode::Playlist => 2,
+        };
+
+        *self = modes[(i + rhs) % 3];
+    }
+}
+
+impl Display for LoopMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
 
 pub struct Queue {
     // all the songs in the playlist
@@ -24,6 +53,8 @@ pub struct Queue {
 
     volume: f32,
     pub shuffle: bool,
+
+    pub loop_mode: LoopMode,
 
     // the audio output;
     // `_stream` must be kept in scope for `sink` to work
@@ -48,6 +79,8 @@ impl Default for Queue {
 
             volume: 1.0,
             shuffle: false,
+
+            loop_mode: LoopMode::Playlist,
 
             sink,
             _stream,
@@ -202,6 +235,11 @@ impl Queue {
     pub fn next(&mut self) {
         self.sink.stop();
 
+        if self.loop_mode == LoopMode::Track {
+            self.play();
+            return;
+        }
+
         if let Some(song) = self.current.take() {
             self.past.push(song);
             self.past.reverse();
@@ -209,7 +247,7 @@ impl Queue {
             self.past.reverse();
         }
 
-        if self.queue.is_empty() {
+        if self.queue.is_empty() && self.loop_mode == LoopMode::Playlist {
             self.queue = self.songs.clone();
 
             if self.shuffle {
@@ -297,6 +335,15 @@ impl Queue {
         }
 
         self.shuffle = !self.shuffle;
+    }
+
+    pub fn queue(&mut self, id: u64) {
+        if let Some(song) = self.songs.iter()
+            .find(|song| song.id == id)
+            .cloned()
+        {
+            self.queue.push(song);
+        }
     }
 
     pub fn queue_all(&mut self) {
