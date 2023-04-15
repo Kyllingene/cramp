@@ -45,5 +45,4 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
 #### Known bugs:
  - the MPRIS implementation doesn't emit the `PropertiesChanged` signal
 
-If you find a bug that isn't listed, [open an issue](https://github.com/kyllingene/issue/new)
-if you find one.
+If you find a bug that isn't listed, [open an issue](https://github.com/kyllingene/issue/new).
