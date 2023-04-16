@@ -288,7 +288,9 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
         b.property("CanControl").get(|_, _| Ok(true));
     });
 
-    cr.insert("/org/mpris/MediaPlayer2", &[root_iface, player_iface], ());
+    let props_iface = cr.properties();
+
+    cr.insert("/org/mpris/MediaPlayer2", &[root_iface, player_iface, props_iface], ());
 
     std::thread::spawn(move || cr.serve(&conn).unwrap());
 

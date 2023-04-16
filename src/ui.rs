@@ -154,8 +154,8 @@ impl App for Player {
                                         .songs
                                         .par_iter()
                                         .filter(|s| {
-                                            s.name.contains(&self.search)
-                                                || s.file.contains(&self.search)
+                                            s.name.to_lowercase().contains(&self.search)
+                                                || s.file.contains(&self.search.to_lowercase())
                                         })
                                         .cloned()
                                         .collect();
