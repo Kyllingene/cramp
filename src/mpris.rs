@@ -290,7 +290,11 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
 
     let props_iface = cr.properties();
 
-    cr.insert("/org/mpris/MediaPlayer2", &[root_iface, player_iface, props_iface], ());
+    cr.insert(
+        "/org/mpris/MediaPlayer2",
+        &[root_iface, player_iface, props_iface],
+        (),
+    );
 
     std::thread::spawn(move || cr.serve(&conn).unwrap());
 

@@ -299,7 +299,7 @@ impl Queue {
             self.play();
             return;
         }
-                
+
         if let Some(song) = self.current.take() {
             if let Some(song) = self.next.take() {
                 self.queue.push(song.song);
