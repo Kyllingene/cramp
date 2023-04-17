@@ -201,10 +201,8 @@ impl Queue {
     }
 
     pub fn play(&mut self) {
-        if self.sink.empty() {
-            if let Some(song) = &mut self.current {
-                self.sink.append(song.open().unwrap());
-            }
+        if let Some(song) = &mut self.current {
+            self.sink.append(song.open().unwrap());
         }
 
         self.sink.play();
@@ -228,8 +226,8 @@ impl Queue {
     }
 
     pub fn stop(&mut self) {
-        self.sink.stop();
         self.pause();
+        self.sink.stop();
     }
 
     pub fn next(&mut self) {
