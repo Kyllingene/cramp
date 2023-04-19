@@ -146,6 +146,30 @@ impl App for Player {
                                 exit(0);
                             }
 
+                            let text_style = egui::TextStyle::Body;
+                            let row_height = ui.text_style_height(&text_style) * 3.0;
+                            egui::ScrollArea::vertical().id_source("queue")
+                                .max_height(100.0)
+                                .show_rows(
+                                ui,
+                                row_height,
+                                queue.user_queue.len(),
+                                |ui, range| {
+                                    for i in range {
+                                        let song = &queue.user_queue[i];
+                                        ui.label(&song.name);
+                                        if let Some(next) = &song.next {
+                                            ui.label(format!("Next: {}", next));
+                                        }
+
+                                        if ui.button("Remove").clicked() {
+                                            queue.user_queue.remove(i);
+                                            break;
+                                        }
+                                    }
+                                },
+                            );
+
                             if ui.text_edit_singleline(&mut self.search).changed() {
                                 if self.search.is_empty() {
                                     self.results = queue.songs.clone();
@@ -164,7 +188,6 @@ impl App for Player {
                                 }
                             }
 
-                            let text_style = egui::TextStyle::Body;
                             let row_height = ui.text_style_height(&text_style) * 5.5;
                             egui::ScrollArea::vertical().id_source("songs").show_rows(
                                 ui,
@@ -177,7 +200,7 @@ impl App for Player {
                                             ui.label(&song.name);
 
                                             if let Some(next) = &song.next {
-                                                ui.label(format!("Next:\n{next}"));
+                                                ui.label(format!("Next: {next}"));
                                             }
 
                                             if ui.button("Remove").clicked() {
@@ -203,9 +226,12 @@ impl App for Player {
                                                 queue.current = Some(song);
                                                 queue.play();
                                             } else if ui.button("Next").clicked() {
+                                                if let Some(next) = queue.next.take() {
+                                                    queue.queue.push_front(next.song);
+                                                }
                                                 queue.next = song.into();
                                             } else if ui.button("Queue").clicked() {
-                                                queue.queue(song.id);
+                                                queue.queue(song.clone());
                                             }
                                         });
                                     }

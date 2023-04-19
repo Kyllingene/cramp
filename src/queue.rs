@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::{read_dir, read_to_string, File};
 use std::io;
@@ -47,7 +48,10 @@ pub struct Queue {
     pub next: Option<LoadedSong>,
 
     // the queue of songs (this is what gets shuffled)
-    pub queue: Vec<Song>,
+    pub queue: VecDeque<Song>,
+    // the user's queued songs
+    pub user_queue: VecDeque<Song>,
+
     // the queue of past songs (up to 100)
     pub past: Vec<Song>,
 
@@ -74,7 +78,8 @@ impl Default for Queue {
             current: None,
             next: None,
 
-            queue: Vec::new(),
+            queue: VecDeque::new(),
+            user_queue: VecDeque::new(),
             past: Vec::with_capacity(100),
 
             volume: 1.0,
@@ -246,7 +251,7 @@ impl Queue {
         }
 
         if self.queue.is_empty() && self.loop_mode == LoopMode::Playlist {
-            self.queue = self.songs.clone();
+            self.queue = self.songs.clone().into();
 
             if self.shuffle {
                 self.shuffle();
@@ -264,26 +269,28 @@ impl Queue {
                 song.into()
             } else if self.shuffle {
                 if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
-                    self.queue.remove(i).into()
-                } else if let Some(song) = self.queue.pop() {
+                    self.queue.remove(i).unwrap().into()
+                } else if let Some(song) = self.queue.pop_front() {
                     song.into()
                 } else {
                     None
                 }
-            } else if let Some(song) = self.queue.pop() {
+            } else if let Some(song) = self.queue.pop_front() {
                 song.into()
             } else {
                 None
             }
+        } else if let Some(song) = self.user_queue.pop_front() {
+            song.into()
         } else if self.shuffle {
-            if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
-                self.queue.remove(i).into()
-            } else if let Some(song) = self.queue.pop() {
+            if let Some((i, _)) = self.queue.iter().enumerate().rev().find(|(_, s)| !s.noshuffle) {
+                self.queue.remove(i).unwrap().into()
+            } else if let Some(song) = self.queue.pop_front() {
                 song.into()
             } else {
                 None
             }
-        } else if let Some(song) = self.queue.pop() {
+        } else if let Some(song) = self.queue.pop_front() {
             song.into()
         } else {
             None
@@ -302,7 +309,7 @@ impl Queue {
 
         if let Some(song) = self.current.take() {
             if let Some(song) = self.next.take() {
-                self.queue.push(song.song);
+                self.queue.push_back(song.song);
             }
 
             self.next = song.into();
@@ -317,7 +324,7 @@ impl Queue {
     // shuffles self.queue (NOT self.songs)
     pub fn shuffle(&mut self) {
         if !self.shuffle {
-            self.queue.shuffle(&mut thread_rng());
+            self.queue.make_contiguous().shuffle(&mut thread_rng());
         } else {
             // try to preserve location in the playlist when unshuffling (except for next)
             if let Some(song) = &self.current {
@@ -329,26 +336,24 @@ impl Queue {
                     .map(|s| s.0);
 
                 if let Some(index) = index {
-                    self.queue = Vec::from(&self.songs[index..]);
+                    self.queue = VecDeque::from(self.songs[index..].to_vec());
                 } else {
-                    self.queue = self.songs.clone();
+                    self.queue = self.songs.clone().into();
                 }
             } else {
-                self.queue = self.songs.clone();
+                self.queue = self.songs.clone().into();
             }
         }
 
         self.shuffle = !self.shuffle;
     }
 
-    pub fn queue(&mut self, id: u64) {
-        if let Some(song) = self.songs.iter().find(|song| song.id == id).cloned() {
-            self.queue.push(song);
-        }
+    pub fn queue(&mut self, song: Song) {
+        self.user_queue.push_back(song);
     }
 
     pub fn queue_all(&mut self) {
-        self.queue = self.songs.clone();
+        self.queue = self.songs.clone().into();
     }
 
     // returns true if nothing is currently playing or paused
