@@ -235,6 +235,14 @@ impl Queue {
         self.sink.stop();
     }
 
+    pub fn remove(&mut self, id: u64) -> Option<Song> {
+        if let Some((i, _)) = self.songs.iter().enumerate().find(|(_, song)| song.id == id) {
+            Some(self.songs.remove(i))
+        } else {
+            None
+        }
+    }
+
     pub fn next(&mut self) {
         self.sink.stop();
 

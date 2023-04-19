@@ -21,12 +21,29 @@ pub fn ui(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, playlist: Option<PathBu
     .unwrap();
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Result {
+    song: Song,
+    selected: bool,
+    set_next: bool,
+}
+
+impl Result {
+    fn new(song: Song) -> Self {
+        Self {
+            song,
+            selected: false,
+            set_next: false,
+        }
+    }
+}
+
 struct Player {
     queue: Arc<Mutex<Queue>>,
     tx: Sender<Message>,
 
     search: String,
-    results: Vec<Song>,
+    results: Vec<Result>,
 
     adding: bool,
     to_add: String,
@@ -39,7 +56,14 @@ struct Player {
 
 impl Player {
     pub fn new(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, playlist: Option<PathBuf>) -> Self {
-        let results = queue.lock().unwrap().songs.clone();
+        let results = queue
+            .lock()
+            .unwrap()
+            .songs
+            .clone()
+            .into_iter()
+            .map(Result::new)
+            .collect();
         Self {
             queue,
             tx,
@@ -153,22 +177,91 @@ impl App for Player {
                                 .max_height(100.0)
                                 .show_rows(ui, row_height, queue.user_queue.len(), |ui, range| {
                                     for i in range {
-                                        let song = &queue.user_queue[i];
-                                        ui.label(&song.name);
-                                        if let Some(next) = &song.next {
-                                            ui.label(format!("Next: {}", next));
-                                        }
+                                        let brk = ui
+                                            .group(|ui| {
+                                                let song = &queue.user_queue[i];
+                                                ui.label(&song.name);
+                                                if let Some(next) = &song.next {
+                                                    ui.label(format!("Next: {}", next));
+                                                }
 
-                                        if ui.button("Remove").clicked() {
-                                            queue.user_queue.remove(i);
+                                                if ui.button("Remove").clicked() {
+                                                    queue.user_queue.remove(i);
+                                                    return true;
+                                                }
+
+                                                false
+                                            })
+                                            .inner;
+                                        if brk {
                                             break;
                                         }
                                     }
                                 });
 
+                            if ui.button("Remove").clicked() {
+                                let ids = self.results.iter().filter_map(|song| {
+                                    if song.selected {
+                                        Some(song.song.id)
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                                for id in ids {
+                                    queue.remove(id);
+                                }
+
+                                self.search.clear();
+                            } else if ui.button("Play").clicked() {
+                                if let Some(result) = self.results.iter().find(|r| r.selected) {
+                                    let song = result.song.clone();
+                                    queue.stop();
+                                    if let Some(next) = &song.next {
+                                        if let Some(song) =
+                                            queue.songs.iter().find(|s| &s.file == next)
+                                        {
+                                            queue.next = song.clone().into();
+                                        }
+                                    }
+                                    queue.current = Some(song);
+                                    queue.play();
+                                }
+                            } else if ui.button("Next").clicked() {
+                                if let Some(result) = self.results.iter_mut().find(|r| r.selected) {
+                                    if let Some(next) = queue.next.take() {
+                                        queue.queue.push_front(next.song);
+                                    }
+                                    result.selected = false;
+                                    queue.next = result.song.clone().into();
+                                }
+                            } else if ui.button("Queue").clicked() {
+                                for result in self.results.iter_mut() {
+                                    if result.selected {
+                                        result.selected = false;
+                                        queue.queue(result.song.clone());
+                                    }
+                                }
+                            } else if ui.button("Set Next").clicked() {
+                                if let Some(next) =
+                                    self.results.iter_mut().find(|result| result.set_next)
+                                {
+                                    next.set_next = false;
+
+                                    let next = next.song.file.clone();
+                                    for result in self.results.iter_mut() {
+                                        if result.selected {
+                                            result.song.next = Some(next.clone());
+                                            result.selected = false;
+                                        }
+                                    }
+                                }
+                            }
+
                             if ui.text_edit_singleline(&mut self.search).changed() {
                                 if self.search.is_empty() {
-                                    self.results = queue.songs.clone();
+                                    self.results =
+                                        queue.songs.clone().into_iter().map(Result::new).collect();
                                 } else {
                                     self.results = queue
                                         .songs
@@ -180,54 +273,26 @@ impl App for Player {
                                                 || s.file.contains(&self.search.to_lowercase())
                                         })
                                         .cloned()
+                                        .map(Result::new)
                                         .collect();
                                 }
                             }
 
-                            let row_height = ui.text_style_height(&text_style) * 5.5;
+                            let row_height = ui.text_style_height(&text_style) * 2.0;
                             egui::ScrollArea::vertical().id_source("songs").show_rows(
                                 ui,
                                 row_height,
                                 self.results.len(),
                                 |ui, range| {
                                     for i in range {
-                                        let song = self.results[i].clone();
-                                        ui.group(|ui| {
-                                            ui.label(&song.name);
+                                        let result = &mut self.results[i];
+                                        let song = &result.song;
+                                        ui.horizontal(|ui| {
+                                            ui.toggle_value(&mut result.set_next, "X");
+                                            ui.toggle_value(&mut result.selected, &song.name);
 
                                             if let Some(next) = &song.next {
                                                 ui.label(format!("Next: {next}"));
-                                            }
-
-                                            if ui.button("Remove").clicked() {
-                                                if let Some(i) = queue
-                                                    .songs
-                                                    .iter()
-                                                    .enumerate()
-                                                    .find(|(_, s)| s == &&song)
-                                                    .map(|(i, _)| i)
-                                                {
-                                                    queue.songs.remove(i);
-                                                }
-                                                self.results.remove(i);
-                                            } else if ui.button("Play").clicked() {
-                                                queue.stop();
-                                                if let Some(next) = &song.next {
-                                                    if let Some(song) =
-                                                        queue.songs.iter().find(|s| &s.file == next)
-                                                    {
-                                                        queue.next = song.clone().into();
-                                                    }
-                                                }
-                                                queue.current = Some(song);
-                                                queue.play();
-                                            } else if ui.button("Next").clicked() {
-                                                if let Some(next) = queue.next.take() {
-                                                    queue.queue.push_front(next.song);
-                                                }
-                                                queue.next = song.into();
-                                            } else if ui.button("Queue").clicked() {
-                                                queue.queue(song.clone());
                                             }
                                         });
                                     }
@@ -263,7 +328,7 @@ impl App for Player {
                                             .noshuffle(self.to_add_noshuffle);
 
                                         if song.name.contains(&self.search) {
-                                            self.results.push(song.clone());
+                                            self.results.push(Result::new(song.clone()));
                                         }
 
                                         queue.songs.push(song);
