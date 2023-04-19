@@ -148,13 +148,10 @@ impl App for Player {
 
                             let text_style = egui::TextStyle::Body;
                             let row_height = ui.text_style_height(&text_style) * 3.0;
-                            egui::ScrollArea::vertical().id_source("queue")
+                            egui::ScrollArea::vertical()
+                                .id_source("queue")
                                 .max_height(100.0)
-                                .show_rows(
-                                ui,
-                                row_height,
-                                queue.user_queue.len(),
-                                |ui, range| {
+                                .show_rows(ui, row_height, queue.user_queue.len(), |ui, range| {
                                     for i in range {
                                         let song = &queue.user_queue[i];
                                         ui.label(&song.name);
@@ -167,8 +164,7 @@ impl App for Player {
                                             break;
                                         }
                                     }
-                                },
-                            );
+                                });
 
                             if ui.text_edit_singleline(&mut self.search).changed() {
                                 if self.search.is_empty() {

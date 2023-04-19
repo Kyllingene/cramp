@@ -283,7 +283,13 @@ impl Queue {
         } else if let Some(song) = self.user_queue.pop_front() {
             song.into()
         } else if self.shuffle {
-            if let Some((i, _)) = self.queue.iter().enumerate().rev().find(|(_, s)| !s.noshuffle) {
+            if let Some((i, _)) = self
+                .queue
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, s)| !s.noshuffle)
+            {
                 self.queue.remove(i).unwrap().into()
             } else if let Some(song) = self.queue.pop_front() {
                 song.into()
