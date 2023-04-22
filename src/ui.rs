@@ -200,7 +200,7 @@ impl App for Player {
                                 });
 
                             if ui.button("Remove").clicked() {
-                                let ids = self.results.iter().filter_map(|song| {
+                                let ids = self.results.iter_mut().filter_map(|song| {
                                     if song.selected {
                                         song.selected = false;
                                         Some(song.song.id)
