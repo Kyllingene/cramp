@@ -1,8 +1,8 @@
 # cramp
 ## Custom rust audio / music player
 
-The definining feature of cramp is that it's mine. I am only too glad to accept
-feature suggestions and pull reqeusts, but the whole reason I made this is to
+The defining feature of cramp is that it's mine. I am only too glad to accept
+feature suggestions and pull requests, but the whole reason I made this is to
 have unorthodox features in my own player. If there's a feature I don't need, I
 probably won't implement it.
 
@@ -14,7 +14,7 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
  - a decent gui + strictly-searchable song list
  - opening and playing a folder of music or M3U playlist
  - basic shuffle
- - almost all of the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec
+ - almost all the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec
     - seeking is currently not available, see [this issue](https://github.com/Kyllingene/cramp/issues/1)
  - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only `#EXTINF` is supported for now
  - a 100-song history

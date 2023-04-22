@@ -1,4 +1,5 @@
 /target
+/.idea
 
 # this is for faster builds, but only good for dev
 /.cargo
