@@ -202,6 +202,7 @@ impl App for Player {
                             if ui.button("Remove").clicked() {
                                 let ids = self.results.iter().filter_map(|song| {
                                     if song.selected {
+                                        song.selected = false;
                                         Some(song.song.id)
                                     } else {
                                         None
@@ -214,8 +215,9 @@ impl App for Player {
 
                                 self.search.clear();
                             } else if ui.button("Play").clicked() {
-                                if let Some(result) = self.results.iter().find(|r| r.selected) {
+                                if let Some(result) = self.results.iter_mut().find(|r| r.selected) {
                                     let song = result.song.clone();
+                                    result.selected = false;
                                     queue.stop();
                                     if let Some(next) = &song.next {
                                         if let Some(song) =
