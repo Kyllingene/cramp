@@ -6,13 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dbus = { version = "0.9"}
-dbus-crossroads = "0.5"
+# dbus = { version = "0.9"}
+# dbus-crossroads = "0.5"
+crossbeam-channel = "0.5.8"
 eframe = "0.21"
 egui_file = "0.8"
+tokio = { version = "1.27", features = ["full"] }
 rand = "0.8"
 rayon = "1.7"
+zbus = { version = "3.11", features = ["gvariant"] }
 
-# https://github.com/RustAudio/rodio/pulls/487 fixes a bug, not yet published
+# https://github.com/RustAudio/rodio/pull/487 fixes a bug, not yet published
 # rodio = "0.17"
 rodio = { git = "https://github.com/RustAudio/rodio.git", rev="5e034a2" }

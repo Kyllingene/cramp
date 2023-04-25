@@ -1,9 +1,9 @@
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
+use crossbeam_channel::Sender;
 use eframe::egui::{self, Layout};
 use eframe::emath::Align;
 use eframe::App;

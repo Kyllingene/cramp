@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use std::sync::mpsc::channel;
+use crossbeam_channel::unbounded;
 
 mod mpris;
 mod process;
@@ -40,7 +40,8 @@ pub enum Message {
     OpenUri(String),
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let mut playlist = None;
     let mut queue = if let Some(path) = env::args().nth(1) {
         let path = Path::new(&path);
@@ -59,9 +60,13 @@ fn main() {
 
     let queue = Arc::new(Mutex::new(queue));
 
-    let (tx, rx) = channel();
+    let (tx, rx) = unbounded();
 
-    process::process(Arc::clone(&queue), tx.clone(), rx);
+    let pqueue = queue.clone();
+    let ptx = tx.clone();
+    let handle = tokio::spawn(async move { process::process(pqueue, ptx, rx).await });
 
     ui::ui(Arc::clone(&queue), tx, playlist);
+
+    handle.abort();
 }
