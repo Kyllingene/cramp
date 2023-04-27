@@ -269,10 +269,11 @@ impl App for Player {
                                         .songs
                                         .par_iter()
                                         .filter(|s| {
+                                            println!("{}\n{}", s.file, s.name);
                                             s.name
                                                 .to_lowercase()
                                                 .contains(&self.search.to_lowercase())
-                                                || s.file.contains(&self.search.to_lowercase())
+                                                || s.file.to_lowercase().contains(&self.search.to_lowercase())
                                         })
                                         .cloned()
                                         .map(Result::new)
