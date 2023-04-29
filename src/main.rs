@@ -60,11 +60,11 @@ async fn main() {
 
     let queue = Arc::new(Mutex::new(queue));
 
-    let (tx, rx) = unbounded();
+    let (tx, _rx) = unbounded();
 
     let pqueue = queue.clone();
-    let ptx = tx.clone();
-    let handle = tokio::spawn(async move { process::process(pqueue, ptx, rx).await });
+    // let ptx = tx.clone();
+    let handle = tokio::spawn(async move { process::process(pqueue /* , rx */).await });
 
     ui::ui(Arc::clone(&queue), tx, playlist);
 

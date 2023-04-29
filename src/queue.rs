@@ -32,6 +32,22 @@ impl AddAssign<usize> for LoopMode {
     }
 }
 
+impl From<&str> for LoopMode {
+    fn from(s: &str) -> Self {
+        match s {
+            "Track" => Self::Track,
+            "Playlist" => Self::Playlist,
+            _ => Self::None,
+        }
+    }
+}
+
+impl From<String> for LoopMode {
+    fn from(s: String) -> Self {
+        s.as_str().into()
+    }
+}
+
 impl Display for LoopMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
@@ -60,6 +76,9 @@ pub struct Queue {
 
     pub loop_mode: LoopMode,
 
+    // set to true to signal an exit
+    pub quit: bool,
+
     // the audio output;
     // `_stream` must be kept in scope for `sink` to work
     sink: Sink,
@@ -84,6 +103,8 @@ impl Default for Queue {
 
             volume: 1.0,
             shuffle: false,
+
+            quit: false,
 
             loop_mode: LoopMode::Playlist,
 
