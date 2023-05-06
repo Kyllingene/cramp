@@ -669,15 +669,18 @@ dependencies = [
 
 [[package]]
 name = "cramp"
-version = "1.2.2"
+version = "1.3.0"
 dependencies = [
+ "crossbeam-channel",
  "dbus",
  "dbus-crossroads",
+ "dirs 5.0.1",
  "eframe",
  "egui_file",
  "rand",
  "rayon",
  "rodio",
+ "windows 0.48.0",
 ]
 
 [[package]]
@@ -795,7 +798,16 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
 dependencies = [
- "dirs-sys",
+ "dirs-sys 0.3.7",
+]
+
+[[package]]
+name = "dirs"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
+dependencies = [
+ "dirs-sys 0.4.1",
 ]
 
 [[package]]
@@ -807,6 +819,18 @@ dependencies = [
  "libc",
  "redox_users",
  "winapi",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1795,6 +1819,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
+name = "option-ext"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
 name = "orbclient"
 version = "0.3.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2720,7 +2750,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b692165700260bbd40fbc5ff23766c03e339fbaca907aeea5cb77bf0a553ca83"
 dependencies = [
  "core-foundation",
- "dirs",
+ "dirs 4.0.0",
  "jni 0.21.1",
  "log",
  "ndk-context",
@@ -2793,6 +2823,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdacb41e6a96a052c6cb63a144f24900236121c6f63f4f8219fef5977ecb0c25"
 dependencies = [
  "windows-targets 0.42.2",
+]
+
+[[package]]
+name = "windows"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
+dependencies = [
+ "windows-targets 0.48.0",
 ]
 
 [[package]]
@@ -3046,7 +3085,7 @@ dependencies = [
  "async-trait",
  "byteorder",
  "derivative",
- "dirs",
+ "dirs 4.0.0",
  "enumflags2",
  "event-listener",
  "futures-core",
