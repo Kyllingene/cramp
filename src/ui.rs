@@ -114,6 +114,10 @@ impl App for Player {
                                     .unwrap_or_else(|| String::from("None")),
                             );
 
+                            if ui.button("Skip next").clicked() {
+                            	queue.skip_next();
+                            }
+
                             ui.label("Volume");
                             let mut vol = queue.volume();
                             if ui.add(egui::Slider::new(&mut vol, 0.0..=5.0)).changed() {

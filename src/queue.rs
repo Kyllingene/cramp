@@ -300,7 +300,6 @@ impl Queue {
                 .queue
                 .iter()
                 .enumerate()
-                .rev()
                 .find(|(_, s)| !s.noshuffle)
             {
                 self.queue.remove(i).unwrap().into()
@@ -314,6 +313,33 @@ impl Queue {
         } else {
             None
         };
+    }
+
+    pub fn skip_next(&mut self) {
+    	if let Some(song) = self.next.take() {
+			self.queue.push_back(song);
+		}
+    
+    	self.next = if let Some(song) = self.user_queue.pop_front() {
+            song.into()
+        } else if self.shuffle {
+            if let Some((i, _)) = self
+                .queue
+                .iter()
+                .enumerate()
+                .find(|(_, s)| !s.noshuffle)
+            {
+                self.queue.remove(i).unwrap().into()
+            } else if let Some(song) = self.queue.pop_front() {
+                song.into()
+            } else {
+                None
+            }
+        } else if let Some(song) = self.queue.pop_front() {
+            song.into()
+        } else {
+            None
+        }
     }
 
     // stops the current song, appends next to queue,
