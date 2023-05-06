@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-// use crossbeam_channel::{unbounded, Sender};
+use crossbeam_channel::{unbounded, Sender};
 use dbus::{arg::PropMap, blocking::Connection, MethodErr};
 use dbus_crossroads::{Context, Crossroads};
-use std::sync::mpsc::{channel, Sender};
 
 use crate::Message;
 
@@ -36,21 +35,21 @@ pub fn mpris(tx: Sender<Message>) -> MprisRecv {
 
     let tx_get_vol = tx.clone();
     let tx_set_vol = tx.clone();
-    let (tx_vol, rx_vol) = channel();
+    let (tx_vol, rx_vol) = unbounded();
     let tx_get_rate = tx.clone();
     let tx_set_rate = tx.clone();
-    let (tx_rate, rx_rate) = channel();
+    let (tx_rate, rx_rate) = unbounded();
     let tx_set_shuf = tx.clone();
     let tx_get_shuf = tx.clone();
-    let (tx_shuf, rx_shuf) = channel();
+    let (tx_shuf, rx_shuf) = unbounded();
     let tx_set_loop_mode = tx.clone();
     let tx_get_loop_mode = tx.clone();
-    let (tx_loop_mode, rx_loop_mode) = channel();
+    let (tx_loop_mode, rx_loop_mode) = unbounded();
     let tx_get_stat = tx.clone();
-    let (tx_stat, rx_stat) = channel();
+    let (tx_stat, rx_stat) = unbounded();
     let tx_open_uri = tx.clone();
     let tx_get_meta = tx;
-    let (tx_meta, rx_meta) = channel();
+    let (tx_meta, rx_meta) = unbounded();
 
     let mut cr = Crossroads::new();
 

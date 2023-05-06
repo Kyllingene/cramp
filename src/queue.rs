@@ -319,7 +319,7 @@ impl Queue {
 
     pub fn skip_next(&mut self) {
     	if let Some(song) = self.next.take() {
-			self.queue.push_back(song);
+			self.queue.push_back(song.song);
 		}
     
     	self.next = if let Some(song) = self.user_queue.pop_front() {
