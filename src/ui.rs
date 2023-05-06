@@ -1,7 +1,7 @@
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::mpsc::Sender;
+use crossbeam_channel::Sender;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui::{self, Layout};
@@ -11,6 +11,8 @@ use rayon::prelude::*;
 
 use crate::queue::LoopMode;
 use crate::{queue::Queue, song::Song, Message};
+
+const PERSIST_FILENAME: &str = ".cramp-playlist.m3u";
 
 pub fn ui(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, playlist: Option<PathBuf>) {
     eframe::run_native(
@@ -64,6 +66,7 @@ impl Player {
             .into_iter()
             .map(Result::new)
             .collect();
+
         Self {
             queue,
             tx,
@@ -165,8 +168,22 @@ impl App for Player {
                                 queue.last();
                             }
 
+                            if ui.button("Clear playlist").clicked() {
+                                queue.songs.clear();
+                                queue.queue.clear();
+                            }
+
                             if ui.button("Exit").clicked() {
                                 self.tx.send(Message::Exit).unwrap();
+
+                                match dirs::home_dir() {
+                                    Some(mut path) => {
+                                        path.push(PERSIST_FILENAME);
+                                        queue.save_playlist(path);
+                                    },
+                                    None => eprintln!("Failed to persist playlist"),
+                                }
+
                                 exit(0);
                             }
 
@@ -321,20 +338,28 @@ impl App for Player {
                                     let add = mem::take(&mut self.to_add);
 
                                     if Path::new(&add).is_file() {
-                                        let next = if self.to_add_next.is_empty() {
-                                            None
+                                        if add.ends_with(".m3u") || add.ends_with(".m3u8") {
+                                            let mut nq = Queue::load(add);
+                                            queue.songs.append(&mut nq.songs);
                                         } else {
-                                            Some(mem::take(&mut self.to_add_next))
-                                        };
+                                            let next = if self.to_add_next.is_empty() {
+                                                None
+                                            } else {
+                                                Some(mem::take(&mut self.to_add_next))
+                                            };
 
-                                        let song = Song::new(add, None, next, None)
-                                            .noshuffle(self.to_add_noshuffle);
+                                            let song = Song::new(add, None, next, None)
+                                                .noshuffle(self.to_add_noshuffle);
 
-                                        if song.name.contains(&self.search) {
-                                            self.results.push(Result::new(song.clone()));
+                                            if song.name.contains(&self.search) {
+                                                self.results.push(Result::new(song.clone()));
+                                            }
+
+                                            queue.songs.push(song);
                                         }
-
-                                        queue.songs.push(song);
+                                    } else if Path::new(&add).is_dir() {
+                                        let mut nq = Queue::load_dir(add);
+                                        queue.songs.append(&mut nq.songs);
                                     }
                                 }
                             }

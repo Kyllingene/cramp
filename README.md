@@ -1,6 +1,8 @@
 # cramp
 ## Custom rust audio / music player
 
+##### Announcement: cramp now supports Windows!
+
 The defining feature of cramp is that it's mine. I am only too glad to accept
 feature suggestions and pull requests, but the whole reason I made this is to
 have unorthodox features in my own player. If there's a feature I don't need, I
@@ -22,8 +24,10 @@ public-friendly. Until then, expect bugs, inconveniences, and incongruities.
    - `#EXTNEXT:<next-song-uri>` to denote a "back-to-back" song
      - song A always selects song B as the next song
    - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
+ - basic playlist persistence
 
 #### Roadmap:
+ - clean up the Windows/Unix differences
  - implement `Seek` and `Metadata`
  - a more robust interface
     - playback position + seeking

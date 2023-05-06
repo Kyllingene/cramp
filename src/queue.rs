@@ -206,11 +206,13 @@ impl Queue {
     }
 
     pub fn play(&mut self) {
-        if let Some(song) = &mut self.current {
-            self.sink.append(song.open().unwrap());
-        }
+        if self.paused() || self.empty() {
+            if let Some(song) = &mut self.current {
+                self.sink.append(song.open().unwrap());
+            }
 
-        self.sink.play();
+            self.sink.play();
+        }
     }
 
     pub fn pause(&mut self) {
