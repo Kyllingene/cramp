@@ -1,31 +1,31 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use crossbeam_channel::{Receiver, Sender};
+use rand::random;
 
 #[cfg(unix)]
 use {
-    crate::{
-        mpris,
-        queue::LoopMode,
-    },
+    crate::{mpris, queue::LoopMode},
     dbus::arg::{PropMap, Variant},
 };
 
 #[cfg(windows)]
 use crate::controls;
 
-use crate::Message;
 use crate::queue::Queue;
+use crate::Message;
 
 pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Message>) {
     std::thread::spawn(move || {
-        
         #[cfg(windows)]
         {
             let controls = controls::controls(tx.clone());
             'mainloop: loop {
                 let mut queue = queue.lock().unwrap();
-                
+
                 // auto-next
                 if !queue.paused() && queue.empty() {
                     queue.next();
@@ -54,16 +54,39 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                 }
             }
         }
-        
+
         #[cfg(unix)]
         {
             let mpris = mpris::mpris(tx.clone());
+            let mut lastloop = Instant::now();
+            let mut silence = 0.0;
+            let mut wait = false;
             'mainloop: loop {
                 let mut queue = queue.lock().unwrap();
-                
+                let delta = (Instant::now() - lastloop).as_secs_f32();
+                lastloop = Instant::now();
+
+                if !wait && silence == 0.0 && queue.do_silence() && queue.empty() {
+                    silence = (random::<f32>() * queue.silence.end() + queue.silence.start())
+                        % (queue.silence.end() + 1.0);
+                    println!("starting silence period {silence} seconds");
+                    wait = true;
+                } else if wait && silence == 0.0 {
+                    wait = false;
+                }
+
                 // auto-next
-                if !queue.paused() && queue.empty() {
+                if !wait && !queue.paused() && queue.empty() && silence == 0.0 {
                     queue.next();
+                    wait = false;
+                }
+
+                if silence != 0.0 {
+                    silence -= delta;
+                    if silence <= 0.0 {
+                        println!("ending silence period");
+                        silence = 0.0;
+                    }
                 }
 
                 // handle events from MPRIS
@@ -75,7 +98,9 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                         Message::GetRate => mpris.rate.send(queue.speed() as f64).unwrap(),
                         Message::SetRate(rate) => queue.set_speed(rate as f32),
 
-                        Message::GetLoop => mpris.loop_mode.send(queue.loop_mode.to_string()).unwrap(),
+                        Message::GetLoop => {
+                            mpris.loop_mode.send(queue.loop_mode.to_string()).unwrap()
+                        }
                         Message::SetLoop(loop_mode) => match loop_mode.as_str() {
                             "None" => queue.loop_mode = LoopMode::None,
                             "Track" => queue.loop_mode = LoopMode::Track,
@@ -99,7 +124,10 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                             let mut map = PropMap::new();
 
                             if let Some(current) = &queue.current {
-                                map.insert("mpris:trackid".to_string(), Variant(Box::new(current.id)));
+                                map.insert(
+                                    "mpris:trackid".to_string(),
+                                    Variant(Box::new(current.id)),
+                                );
                                 map.insert(
                                     "xesam:title".to_string(),
                                     Variant(Box::new(current.name.clone())),
@@ -107,19 +135,46 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
 
                                 if let Some(Ok(length)) = current.length.map(|l| l.try_into()) {
                                     let length: u64 = length;
-                                    map.insert("mpris:length".to_string(), Variant(Box::new(length)));
+                                    map.insert(
+                                        "mpris:length".to_string(),
+                                        Variant(Box::new(length)),
+                                    );
                                 }
                             }
 
                             mpris.meta.send(map).unwrap();
                         }
 
-                        Message::Play => queue.play(),
-                        Message::Pause => queue.pause(),
-                        Message::PlayPause => queue.play_pause(),
-                        Message::Next => queue.next(),
-                        Message::Prev => queue.last(),
-                        Message::Stop => queue.stop(),
+                        Message::Play => {
+                            queue.play();
+                            silence = 0.0;
+                            wait = true;
+                        }
+                        Message::Pause => {
+                            queue.pause();
+                            silence = 0.0;
+                            wait = true;
+                        }
+                        Message::PlayPause => {
+                            queue.play_pause();
+                            silence = 0.0;
+                            wait = true;
+                        }
+                        Message::Next => {
+                            queue.next();
+                            silence = 0.0;
+                            wait = true;
+                        }
+                        Message::Prev => {
+                            queue.last();
+                            silence = 0.0;
+                            wait = true;
+                        }
+                        Message::Stop => {
+                            queue.stop();
+                            silence = 0.0;
+                            wait = true;
+                        }
                         Message::Shuffle => queue.shuffle(),
 
                         Message::OpenUri(uri) => queue.add_file(uri).unwrap(),
@@ -129,6 +184,7 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                             break 'mainloop;
                         }
 
+                        #[allow(unreachable_patterns)]
                         msg => panic!("Unhandled message: {msg:?}"),
                     }
                 }

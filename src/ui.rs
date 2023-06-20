@@ -1,7 +1,7 @@
+use crossbeam_channel::Sender;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use crossbeam_channel::Sender;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui::{self, Layout};
@@ -118,7 +118,7 @@ impl App for Player {
                             );
 
                             if ui.button("Skip next").clicked() {
-                            	queue.skip_next();
+                                queue.skip_next();
                             }
 
                             ui.label("Volume");
@@ -131,6 +131,19 @@ impl App for Player {
                             let mut speed = queue.speed();
                             if ui.add(egui::Slider::new(&mut speed, 0.01..=5.0)).changed() {
                                 queue.set_speed(speed);
+                            }
+
+                            ui.label("Silence length");
+                            let mut start = *queue.silence.start();
+                            let mut end = *queue.silence.end();
+                            if ui
+                                .add(egui::Slider::new(&mut start, 0.0..=3600.0))
+                                .changed()
+                            {
+                                queue.silence = start..=end;
+                            }
+                            if ui.add(egui::Slider::new(&mut end, 0.0..=3600.0)).changed() {
+                                queue.silence = start..=end;
                             }
 
                             if ui
@@ -161,15 +174,18 @@ impl App for Player {
                                 .button(if queue.paused() { "Play" } else { "Pause" })
                                 .clicked()
                             {
-                                queue.play_pause();
+                                // queue.play_pause();
+                                self.tx.send(Message::PlayPause).unwrap();
                             }
 
                             if ui.button("Next").clicked() {
-                                queue.next();
+                                // queue.next();
+                                self.tx.send(Message::Next).unwrap();
                             }
 
                             if ui.button("Previous").clicked() {
-                                queue.last();
+                                // queue.last();
+                                self.tx.send(Message::Prev).unwrap();
                             }
 
                             if ui.button("Clear playlist").clicked() {
@@ -184,7 +200,7 @@ impl App for Player {
                                     Some(mut path) => {
                                         path.push(PERSIST_FILENAME);
                                         queue.save_playlist(path);
-                                    },
+                                    }
                                     None => eprintln!("Failed to persist playlist"),
                                 }
 
@@ -239,7 +255,8 @@ impl App for Player {
                                 if let Some(result) = self.results.iter_mut().find(|r| r.selected) {
                                     let song = result.song.clone();
                                     result.selected = false;
-                                    queue.stop();
+                                    // queue.stop();
+                                    self.tx.send(Message::Stop).unwrap();
                                     if let Some(next) = &song.next {
                                         if let Some(song) =
                                             queue.songs.iter().find(|s| &s.file == next)
@@ -248,7 +265,8 @@ impl App for Player {
                                         }
                                     }
                                     queue.current = Some(song);
-                                    queue.play();
+                                    // queue.play();
+                                    self.tx.send(Message::Play).unwrap();
                                 }
                             } else if ui.button("Next").clicked() {
                                 if let Some(result) = self.results.iter_mut().find(|r| r.selected) {
@@ -294,7 +312,9 @@ impl App for Player {
                                             s.name
                                                 .to_lowercase()
                                                 .contains(&self.search.to_lowercase())
-                                                || s.file.to_lowercase().contains(&self.search.to_lowercase())
+                                                || s.file
+                                                    .to_lowercase()
+                                                    .contains(&self.search.to_lowercase())
                                         })
                                         .cloned()
                                         .map(Result::new)

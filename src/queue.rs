@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::fs::{read_dir, read_to_string, File};
 use std::io;
 use std::mem;
-use std::ops::AddAssign;
+use std::ops::{AddAssign, RangeInclusive};
 use std::path::Path;
 
 use rand::{seq::SliceRandom, thread_rng};
@@ -60,6 +60,9 @@ pub struct Queue {
 
     pub loop_mode: LoopMode,
 
+    // the range for silence periods
+    pub silence: RangeInclusive<f32>,
+
     // the audio output;
     // `_stream` must be kept in scope for `sink` to work
     sink: Sink,
@@ -86,6 +89,8 @@ impl Default for Queue {
             shuffle: false,
 
             loop_mode: LoopMode::Playlist,
+
+            silence: 0.0..=0.0,
 
             sink,
             _stream,
@@ -298,12 +303,7 @@ impl Queue {
         } else if let Some(song) = self.user_queue.pop_front() {
             song.into()
         } else if self.shuffle {
-            if let Some((i, _)) = self
-                .queue
-                .iter()
-                .enumerate()
-                .find(|(_, s)| !s.noshuffle)
-            {
+            if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
                 self.queue.remove(i).unwrap().into()
             } else if let Some(song) = self.queue.pop_front() {
                 song.into()
@@ -318,19 +318,14 @@ impl Queue {
     }
 
     pub fn skip_next(&mut self) {
-    	if let Some(song) = self.next.take() {
-			self.queue.push_back(song.song);
-		}
-    
-    	self.next = if let Some(song) = self.user_queue.pop_front() {
+        if let Some(song) = self.next.take() {
+            self.queue.push_back(song.song);
+        }
+
+        self.next = if let Some(song) = self.user_queue.pop_front() {
             song.into()
         } else if self.shuffle {
-            if let Some((i, _)) = self
-                .queue
-                .iter()
-                .enumerate()
-                .find(|(_, s)| !s.noshuffle)
-            {
+            if let Some((i, _)) = self.queue.iter().enumerate().find(|(_, s)| !s.noshuffle) {
                 self.queue.remove(i).unwrap().into()
             } else if let Some(song) = self.queue.pop_front() {
                 song.into()
@@ -435,11 +430,15 @@ impl Queue {
         Ok(())
     }
 
-    pub(crate) fn speed(&self) -> f32 {
+    pub fn speed(&self) -> f32 {
         self.sink.speed()
     }
 
-    pub(crate) fn set_speed(&self, speed: f32) {
+    pub fn set_speed(&self, speed: f32) {
         self.sink.set_speed(speed);
+    }
+
+    pub fn do_silence(&self) -> bool {
+        self.silence != (0.0..=0.0)
     }
 }

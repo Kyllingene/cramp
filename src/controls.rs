@@ -1,4 +1,3 @@
-// use std::sync::mpsc::Sender;
 use crossbeam_channel::Sender;
 
 use windows::Foundation::TypedEventHandler;
