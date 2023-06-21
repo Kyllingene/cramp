@@ -69,7 +69,6 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                 if !wait && silence == 0.0 && queue.do_silence() && queue.empty() {
                     silence = (random::<f32>() * queue.silence.end() + queue.silence.start())
                         % (queue.silence.end() + 1.0);
-                    println!("starting silence period {silence} seconds");
                     wait = true;
                 } else if wait && silence == 0.0 {
                     wait = false;
@@ -84,7 +83,6 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                 if silence != 0.0 {
                     silence -= delta;
                     if silence <= 0.0 {
-                        println!("ending silence period");
                         silence = 0.0;
                     }
                 }
