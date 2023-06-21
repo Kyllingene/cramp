@@ -61,7 +61,7 @@ pub struct Queue {
     pub loop_mode: LoopMode,
 
     // the range for silence periods
-    pub silence: RangeInclusive<f32>,
+    pub silence: RangeInclusive<f64>,
 
     // the audio output;
     // `_stream` must be kept in scope for `sink` to work
