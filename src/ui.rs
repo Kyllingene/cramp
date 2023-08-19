@@ -218,6 +218,15 @@ impl App for Player {
                                             .group(|ui| {
                                                 let song = &queue.user_queue[i];
                                                 ui.label(&song.name);
+
+                                                if let Some(micros) = song.length {
+                                                    ui.label(format!(
+                                                        "{}:{}",
+                                                        micros / 60000000,
+                                                        (micros / 1000000) % 60,
+                                                    ));
+                                                }
+
                                                 if let Some(next) = &song.next {
                                                     ui.label(format!("Next: {}", next));
                                                 }
@@ -308,7 +317,6 @@ impl App for Player {
                                         .songs
                                         .par_iter()
                                         .filter(|s| {
-                                            println!("{}\n{}", s.file, s.name);
                                             s.name
                                                 .to_lowercase()
                                                 .contains(&self.search.to_lowercase())
@@ -334,6 +342,14 @@ impl App for Player {
                                         ui.horizontal(|ui| {
                                             ui.toggle_value(&mut result.set_next, "X");
                                             ui.toggle_value(&mut result.selected, &song.name);
+
+                                            if let Some(micros) = song.length {
+                                                ui.label(format!(
+                                                    "{}:{}",
+                                                    micros / 60000000,
+                                                    (micros / 1000000) % 60,
+                                                ));
+                                            }
 
                                             if let Some(next) = &song.next {
                                                 ui.label(format!("Next: {next}"));

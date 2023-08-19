@@ -39,20 +39,20 @@ impl Display for LoopMode {
 }
 
 pub struct Queue {
-    // all the songs in the playlist
+    /// all the songs in the playlist
     pub songs: Vec<Song>,
 
-    // the currently playing song
+    /// the currently playing song
     pub current: Option<Song>,
-    // the next song
+    /// the next song
     pub next: Option<LoadedSong>,
 
-    // the queue of songs (this is what gets shuffled)
+    /// the queue of songs (this is what gets shuffled)
     pub queue: VecDeque<Song>,
-    // the user's queued songs
+    /// the user's queued songs
     pub user_queue: VecDeque<Song>,
 
-    // the queue of past songs (up to 100)
+    /// the queue of past songs (up to 100)
     pub past: Vec<Song>,
 
     volume: f32,
@@ -60,11 +60,11 @@ pub struct Queue {
 
     pub loop_mode: LoopMode,
 
-    // the range for silence periods
+    /// the range for silence periods
     pub silence: RangeInclusive<f64>,
 
-    // the audio output;
-    // `_stream` must be kept in scope for `sink` to work
+    /// the audio output;
+    /// `_stream` must be kept in scope for `sink` to work
     sink: Sink,
     _stream: OutputStream,
 }
@@ -106,10 +106,10 @@ impl Queue {
         Self::default()
     }
 
-    // load a song from a playlist file
-    // supports the M3U #EXTINF flag, as well as
-    // a custom `#EXTNEXT:<next-song>` flag, and
-    // a custom `#EXTNOSHUFFLE` flag
+    /// load a song from a playlist file
+    /// supports the M3U #EXTINF flag, as well as
+    /// a custom `#EXTNEXT:<next-song>` flag, and
+    /// a custom `#EXTNOSHUFFLE` flag
     pub fn load<P: AsRef<Path>>(file: P) -> Self {
         let mut queue = Queue::new();
 
@@ -161,7 +161,7 @@ impl Queue {
         queue
     }
 
-    // load all the music in a directory (doesn't check extensions)
+    /// load all the music in a directory (doesn't check extensions)
     pub fn load_dir<P: AsRef<Path>>(path: P) -> Self {
         Self {
             songs: Self::load_dir_entry(path),
@@ -169,7 +169,7 @@ impl Queue {
         }
     }
 
-    // recursively load all the music in a directory (doesn't check extensions)
+    /// recursively load all the music in a directory (doesn't check extensions)
     fn load_dir_entry<P: AsRef<Path>>(dir: P) -> Vec<Song> {
         let mut songs = Vec::new();
         for entry in read_dir(dir).unwrap() {
@@ -186,8 +186,8 @@ impl Queue {
         songs
     }
 
-    // save the current playlist to a file, saving
-    // all M3U flags that cramp supports
+    /// save the current playlist to a file, saving
+    /// all M3U flags that cramp supports
     pub fn save_playlist<P: AsRef<Path>>(&self, path: P) {
         use std::io::Write;
         let mut file = File::create(path).unwrap();
@@ -339,8 +339,8 @@ impl Queue {
         }
     }
 
-    // stops the current song, appends next to queue,
-    // sets next to current song, sets current to past.pop
+    /// stops the current song, appends next to queue,
+    /// sets next to current song, sets current to past.pop
     pub fn last(&mut self) {
         self.sink.stop();
 
@@ -363,7 +363,7 @@ impl Queue {
         }
     }
 
-    // shuffles self.queue (NOT self.songs)
+    /// shuffles self.queue (NOT self.songs)
     pub fn shuffle(&mut self) {
         if !self.shuffle {
             self.queue.make_contiguous().shuffle(&mut thread_rng());
@@ -398,7 +398,7 @@ impl Queue {
         self.queue = self.songs.clone().into();
     }
 
-    // returns true if nothing is currently playing or paused
+    /// returns true if nothing is currently playing or paused
     pub fn empty(&self) -> bool {
         self.sink.empty()
     }
@@ -411,7 +411,7 @@ impl Queue {
         self.sink.is_paused()
     }
 
-    // add a file to the playlist, and play it
+    /// add a file to the playlist, and play it
     pub fn add_file<P: AsRef<Path>>(&mut self, file: P) -> io::Result<()> {
         let mut file: String = file.as_ref().display().to_string();
         if let Some(f) = file.strip_prefix("file://") {
@@ -420,8 +420,6 @@ impl Queue {
 
         self.songs.push(Song::new(file, None, None, None));
         self.current = self.songs.last().cloned();
-
-        println!("{:?}", self.current);
 
         self.sink.stop();
         self.sink.append(self.current.as_mut().unwrap().open()?);

@@ -10,28 +10,28 @@ use rodio::{Decoder, Source};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Song {
-    // The filepath of the song
+    /// The filepath of the song
     pub file: String,
-    // The human-friendly name of the song
+    /// The human-friendly name of the song
     pub name: String,
-    // The name to save the song under in a playlist (for songs with no given name)
+    /// The name to save the song under in a playlist (for songs with no given name)
     pub save_name: Option<String>,
 
-    // An optional "next-song-override", by filepath
+    /// An optional "next-song-override", by filepath
     pub next: Option<String>,
 
-    // The length of the song in microseconds
+    /// The length of the song in microseconds
     pub length: Option<u128>,
 
-    // Prevent the song from being played normally if the queue is shuffled
+    /// Prevent the song from being played normally if the queue is shuffled
     pub noshuffle: bool,
 
-    // The unique ID of the song
+    /// The unique ID of the song
     pub id: u64,
 }
 
 impl Song {
-    // Creates a new song
+    /// Creates a new song
     pub fn new<S: ToString>(
         file: S,
         name: Option<S>,
@@ -64,14 +64,14 @@ impl Song {
         }
     }
 
-    // Set song.noshuffle
+    /// Set song.noshuffle
     pub fn noshuffle(mut self, noshuffle: bool) -> Self {
         self.noshuffle = noshuffle;
         self
     }
 
-    // Open a song (returns a rodio-ready decoder)
-    // Also attempts to get the length of the song
+    /// Open a song (returns a rodio-ready decoder)
+    /// Also attempts to get the length of the song
     pub fn open(&mut self) -> io::Result<Decoder<BufReader<File>>> {
         let dec = Decoder::new(BufReader::new(File::open(&self.file)?))
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
@@ -80,6 +80,8 @@ impl Song {
         // Was given by the playlist, don't override
         if let Some(len) = dec.total_duration().map(|d| d.as_micros()) {
             self.length = Some(len);
+            self.name, len / 60000000,
+            (len / 1000000) % 60,);
         }
 
         Ok(dec)

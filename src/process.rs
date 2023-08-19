@@ -65,9 +65,10 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                 let delta = (Instant::now() - lastloop).as_secs_f64();
                 lastloop = Instant::now();
                 let mut queue = queue.lock().unwrap();
-                if !wait && silence == 0.0 && queue.do_silence() && queue.empty() && !queue.paused() {
-                    silence = random::<f64>() * (queue.silence.end() - queue.silence.start()) + queue.silence.start();
-                    println!("starting silence period of {silence} seconds");
+                if !wait && silence == 0.0 && queue.do_silence() && queue.empty() && !queue.paused()
+                {
+                    silence = random::<f64>() * (queue.silence.end() - queue.silence.start())
+                        + queue.silence.start();
                     wait = true;
                 } else if wait && silence == 0.0 {
                     wait = false;
@@ -82,10 +83,7 @@ pub fn process(queue: Arc<Mutex<Queue>>, tx: Sender<Message>, rx: Receiver<Messa
                 if silence != 0.0 {
                     silence -= delta;
                     if silence <= 0.0 {
-                        println!("ending silence period");
                         silence = 0.0;
-                    } else {
-                        println!("silence period lasts {silence} more seconds (decreased by {delta})");
                     }
                 }
 
