@@ -77,11 +77,11 @@ impl Song {
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
         // If the total duration is unavailable, but a length
-        // Was given by the playlist, don't override
+        // was given by the playlist, don't override
         if let Some(len) = dec.total_duration().map(|d| d.as_micros()) {
             self.length = Some(len);
-            self.name, len / 60000000,
-            (len / 1000000) % 60,);
+            // self.name, len / 60000000,
+            // (len / 1000000) % 60,);
         }
 
         Ok(dec)

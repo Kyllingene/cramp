@@ -669,7 +669,7 @@ dependencies = [
 
 [[package]]
 name = "cramp"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "crossbeam-channel",
  "dbus",
