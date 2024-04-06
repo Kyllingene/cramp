@@ -38,8 +38,10 @@ impl Song {
         next: Option<S>,
         length: Option<u128>,
     ) -> Self {
-        let file = file.to_string()
-            .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
+        let mut file = file.to_string();
+        if file.starts_with('~') {
+            file = file.replace('~', dirs::home_dir().unwrap().to_str().unwrap());
+        }
 
         let mut hasher = DefaultHasher::new();
         file.to_string().hash(&mut hasher);

@@ -62,21 +62,27 @@ fn main() {
         eprintln!("Failed to check for persisted playlist");
     }
 
-    if let Some(path) = env::args().nth(1) {
-        playlist = Some(path.into());
-    }
+    let mut queue = Queue::new();
 
-    let mut queue = if let Some(path) = &playlist {
+    if let Some(path) = &playlist {
         let path = Path::new(&path);
 
         if path.is_dir() {
-            Queue::load_dir(path)
+            queue.load_dir(path);
         } else {
-            Queue::load(path)
+            queue.load(path);
         }
-    } else {
-        Queue::new()
-    };
+    }
+
+    for arg in env::args().skip(1) {
+        let path = Path::new(&arg);
+
+        if path.is_dir() {
+            queue.load_dir(path);
+        } else {
+            queue.load(path);
+        }
+    }
 
     queue.queue_all();
 

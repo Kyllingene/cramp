@@ -98,6 +98,7 @@ impl Default for Queue {
     }
 }
 
+// FIXME: wait why did i do this this is horrible
 unsafe impl Sync for Queue {}
 unsafe impl Send for Queue {}
 
@@ -110,12 +111,8 @@ impl Queue {
     /// supports the M3U #EXTINF flag, as well as
     /// a custom `#EXTNEXT:<next-song>` flag, and
     /// a custom `#EXTNOSHUFFLE` flag
-    pub fn load<P: AsRef<Path>>(file: P) -> Self {
-        let mut queue = Queue::new();
-
+    pub fn load<P: AsRef<Path>>(&mut self, file: P) {
         let data = read_to_string(file).unwrap();
-
-        let mut songs = Vec::new();
 
         let mut length = None;
         let mut name = None;
@@ -150,40 +147,26 @@ impl Queue {
             } else if line.strip_prefix("#EXTNOSHUFFLE").is_some() {
                 noshuffle = true;
             } else if !line.starts_with('#') {
-                songs.push(
+                self.songs.push(
                     Song::new(line.to_string(), name.take(), next.take(), length)
                         .noshuffle(mem::take(&mut noshuffle)),
                 );
             }
         }
-
-        queue.songs = songs;
-        queue
-    }
-
-    /// load all the music in a directory (doesn't check extensions)
-    pub fn load_dir<P: AsRef<Path>>(path: P) -> Self {
-        Self {
-            songs: Self::load_dir_entry(path),
-            ..Default::default()
-        }
     }
 
     /// recursively load all the music in a directory (doesn't check extensions)
-    fn load_dir_entry<P: AsRef<Path>>(dir: P) -> Vec<Song> {
-        let mut songs = Vec::new();
-        for entry in read_dir(dir).unwrap() {
+    pub fn load_dir<P: AsRef<Path>>(&mut self, path: P) {
+        for entry in read_dir(path).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
 
             if path.is_dir() {
-                songs.append(&mut Self::load_dir_entry(path));
+                self.load_dir(path);
             } else {
-                songs.push(Song::new(path.display(), None, None, None));
+                self.songs.push(Song::new(path.display(), None, None, None));
             }
         }
-
-        songs
     }
 
     /// save the current playlist to a file, saving

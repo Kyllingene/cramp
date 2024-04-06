@@ -379,8 +379,7 @@ impl App for Player {
 
                                     if Path::new(&add).is_file() {
                                         if add.ends_with(".m3u") || add.ends_with(".m3u8") {
-                                            let mut nq = Queue::load(add);
-                                            queue.songs.append(&mut nq.songs);
+                                            queue.load(add);
                                         } else {
                                             let next = if self.to_add_next.is_empty() {
                                                 None
@@ -398,8 +397,7 @@ impl App for Player {
                                             queue.songs.push(song);
                                         }
                                     } else if Path::new(&add).is_dir() {
-                                        let mut nq = Queue::load_dir(add);
-                                        queue.songs.append(&mut nq.songs);
+                                        queue.load_dir(add);
                                     }
                                 }
                             }
