@@ -47,6 +47,13 @@ impl Song {
         file.to_string().hash(&mut hasher);
         let id = hasher.finish();
 
+        let mut next = next.map(|n| n.to_string());
+        if let Some(next) = &mut next {
+            if next.starts_with('~') {
+                *next = next.replace('~', dirs::home_dir().unwrap().to_str().unwrap());
+            }
+        }
+
         Self {
             file: file.to_string(),
             save_name: name.as_ref().map(|s| s.to_string()),
@@ -62,7 +69,7 @@ impl Song {
                 },
                 |s| s.to_string(),
             ),
-            next: next.map(|s| s.to_string()),
+            next,
             length,
             noshuffle: false,
             id,
