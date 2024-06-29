@@ -96,6 +96,10 @@ fn main() {
         ui.flush();
 
         if let Ok(key) = rx.recv_timeout(Duration::from_secs(1)) {
+
+            // FIXME: query pause information from Queue, not Player
+            let paused = !player.playing();
+
             match ui.event(key, &rx) {
                 Some(Event::Exit) => break,
                 Some(Event::Shuffle) => queue.shuffle(),
@@ -108,6 +112,9 @@ fn main() {
                                 "failed to play song {}: {e}",
                                 song.path.display()
                             )));
+                        }
+                        if paused {
+                            player.pause();
                         }
                     }
                     if let Some(song) = queue.next() {
@@ -128,6 +135,9 @@ fn main() {
                                 "failed to play song {}: {e}",
                                 song.path.display()
                             )));
+                        }
+                        if paused {
+                            player.pause();
                         }
                     }
                     if let Some(song) = queue.next() {

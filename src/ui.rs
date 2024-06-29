@@ -22,7 +22,7 @@ pub enum Event {
 
 #[derive(Default)]
 pub struct Ui {
-    messages: u32,
+    messages: Vec<Message>,
 }
 
 impl Ui {
@@ -36,12 +36,12 @@ impl Ui {
     }
 
     pub fn event(&mut self, key: KeyEvent, rx: &Receiver<KeyEvent>) -> Option<Event> {
-        match key.code {
+        let ev = match key.code {
             KeyCode::Char('q') => {
                 self.clear();
                 let (w, _) = term::size_or();
-                self.draw_centered(3, "do you want to exit?", None, w);
-                self.draw_centered(4, "press y to exit", None, w);
+                draw_centered(3, "do you want to exit?", None, w, true);
+                draw_centered(4, "press y to exit", None, w, false);
                 self.flush();
 
                 if rx.recv_timeout(Duration::from_secs(5)).ok()?.code == KeyCode::Char('y') {
@@ -67,27 +67,33 @@ impl Ui {
             }
             KeyCode::Char(' ') => Some(Event::PlayPause),
             _ => None,
+        };
+
+        if ev.is_some() {
+            self.messages.clear();
         }
+
+        ev
     }
 
     pub fn draw(&mut self, queue: &Queue, player: &Player) {
-        let (w, _) = term::size_or();
+        let (w, h) = term::size_or();
 
         let current = if let Some(song) = queue.current() {
             &song.name
         } else {
             "<no song playing>"
         };
-        self.draw_centered(2, current, Some("now: "), w);
+        draw_centered(2, current, Some("now: "), w, true);
 
         let next = if let Some(song) = queue.next() {
             &song.name
         } else {
             "<no song is next>"
         };
-        self.draw_centered(3, next, Some("next: "), w);
+        draw_centered(3, next, Some("next: "), w, true);
 
-        self.draw_centered(
+        draw_centered(
             5,
             if player.playing() {
                 "playing"
@@ -96,44 +102,51 @@ impl Ui {
             },
             None,
             w,
+            true,
         );
 
         if let Some((elapsed, total)) = player.time_info() {
-            self.draw_centered(6, &fmt_time(elapsed, total), None, w);
+            draw_centered(6, &fmt_time(elapsed, total), None, w, false);
+        }
+
+        draw_centered(8, "queued", None, w, true);
+
+        for (i, song) in queue.playlist().enumerate().take(h as usize - 11) {
+            draw_centered(i as u32 + 10, &song.name, None, w, false);
+        }
+
+        for (i, message) in self.messages.iter().enumerate() {
+            draw_centered(h - i as u32, message, None, w, true);
         }
     }
 
     pub fn clear(&mut self) {
-        self.messages = 0;
         clear::all();
     }
 
     pub fn add_message(&mut self, message: Message) {
-        let msg = &*message;
-
-        let (w, h) = term::size_or();
-
-        let mid = (w / 2).saturating_sub(msg.len() as u32 / 2);
-        goto::pos(mid, h - self.messages);
-        print!("{msg}");
-
-        self.messages += 1;
+        self.messages.push(message);
     }
 
     pub fn flush(&self) {
         goto::home();
         cod::flush();
     }
+}
 
-    fn draw_centered(&mut self, y: u32, msg: &str, pre: Option<&str>, w: u32) {
-        let mid = (w / 2)
-            .saturating_sub((msg.len() as u32 + pre.map(|s| s.len() as u32).unwrap_or(0)) / 2);
-        goto::pos(mid, y);
+fn draw_centered(y: u32, msg: &str, pre: Option<&str>, w: u32, bold: bool) {
+    let mid = (w / 2)
+        .saturating_sub((msg.len() as u32 + pre.map(|s| s.len() as u32).unwrap_or(0)) / 2);
+    goto::pos(mid, y);
 
-        if let Some(pre) = pre {
-            print!("{pre}");
-        }
+    if let Some(pre) = pre {
+        print!("{pre}");
+    }
+
+    if bold {
         style::with::bold(|| print!("{msg}"));
+    } else {
+        print!("{msg}");
     }
 }
 
@@ -158,10 +171,8 @@ fn fmt_time(elapsed: f64, total: f64) -> String {
 
     if ehrs > 0 || thrs > 0 {
         format!("{ehrs}:{emins:02}:{esecs:02} / {thrs}:{tmins:02}:{tsecs:02}")
-    } else if emins > 0 || tmins > 0 {
-        format!("{emins:02}:{esecs:02} / {tmins:02}:{tsecs:02}")
     } else {
-        format!("{esecs:02} / {tsecs:02}")
+        format!("{emins:02}:{esecs:02} / {tmins:02}:{tsecs:02}")
     }
 }
 

@@ -48,6 +48,10 @@ impl Queue {
         self.playlist.front().map(|id| self.get(*id))
     }
 
+    pub fn playlist(&self) -> impl Iterator<Item = &Song> + '_ {
+        self.playlist.iter().map(|id| self.get(*id)).skip(1)
+    }
+
     pub fn advance(&mut self) {
         if let Some(id) = self.current.take() {
             self.history.push_back(id);
