@@ -1,12 +1,16 @@
-use std::fmt;
 use std::ops::Deref;
+use std::thread;
+use std::time::Duration;
+use std::{fmt, sync::mpsc::channel};
 
 mod player;
 mod queue;
 mod song;
+mod ui;
 
 use player::Player;
 use queue::Queue;
+use ui::{Event, Ui};
 
 pub enum Message {
     Static(&'static str),
@@ -50,13 +54,101 @@ impl fmt::Display for Message {
 fn main() {
     let mut queue = Queue::new();
     let mut player = Player::new();
+    let mut ui = Ui::new();
 
     let playlist = std::fs::read_to_string("/home/kyllingene/Music/sleep.m3u").unwrap();
-    let _ = queue.load(&playlist);
+    for message in queue.load(&playlist) {
+        ui.add_message(message);
+    }
 
-    for song in queue.songs.values() {
-        player.play(song).unwrap();
-        println!("playing {}", song.name);
-        // std::thread::sleep(std::time::Duration::from_secs(2));
+    queue.queue_all();
+
+    let (tx, rx) = channel();
+    let _handle = thread::spawn(move || loop {
+        if let Some(key) = cod::read::key() {
+            tx.send(key);
+        }
+    });
+
+    loop {
+        if player.finished() && !player.playing() {
+            queue.advance();
+            if let Some(song) = queue.current() {
+                if let Err(e) = player.play(song) {
+                    ui.add_message(Message::new(format!(
+                        "failed to play song {}: {e}",
+                        song.path.display()
+                    )));
+                }
+                if let Some(song) = queue.next() {
+                    if let Err(e) = player.load_next(song) {
+                        ui.add_message(Message::new(format!(
+                            "failed to load song {}: {e}",
+                            song.path.display()
+                        )));
+                    }
+                }
+            }
+        }
+
+        ui.draw(&queue, &player);
+        ui.flush();
+
+        if let Ok(key) = rx.recv_timeout(Duration::from_secs(1)) {
+            match ui.event(key, &rx) {
+                Some(Event::Exit) => break,
+                Some(Event::Shuffle) => queue.shuffle(),
+                Some(Event::Next) => {
+                    player.stop();
+                    queue.advance();
+                    if let Some(song) = queue.current() {
+                        if let Err(e) = player.play(song) {
+                            ui.add_message(Message::new(format!(
+                                "failed to play song {}: {e}",
+                                song.path.display()
+                            )));
+                        }
+                    }
+                    if let Some(song) = queue.next() {
+                        if let Err(e) = player.load_next(song) {
+                            ui.add_message(Message::new(format!(
+                                "failed to load song {}: {e}",
+                                song.path.display()
+                            )));
+                        }
+                    }
+                }
+                Some(Event::Prev) => {
+                    player.stop();
+                    queue.previous();
+                    if let Some(song) = queue.current() {
+                        if let Err(e) = player.play(song) {
+                            ui.add_message(Message::new(format!(
+                                "failed to play song {}: {e}",
+                                song.path.display()
+                            )));
+                        }
+                    }
+                    if let Some(song) = queue.next() {
+                        if let Err(e) = player.load_next(song) {
+                            ui.add_message(Message::new(format!(
+                                "failed to load song {}: {e}",
+                                song.path.display()
+                            )));
+                        }
+                    }
+                }
+                Some(Event::PlayPause) => {
+                    if player.playing() {
+                        player.pause();
+                    } else {
+                        player.resume();
+                    }
+                }
+                None => {}
+            }
+        }
+
+        ui.clear();
     }
 }

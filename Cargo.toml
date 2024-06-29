@@ -6,9 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+circular-buffer = "0.1.7"
 cod = { version = "9.0.0", features = ["crossterm"] }
 dirs = "5.0.1"
 kittyaudio = "0.1.9"
+rand = "0.8.5"
 slotmap = "1.0.7"
 
 # don't ask, it's what I needed to make it play audio in debug

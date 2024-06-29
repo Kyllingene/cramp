@@ -7,13 +7,14 @@ pub struct Song {
     pub path: PathBuf,
     pub next: Option<PathBuf>,
     pub no_shuffle: bool,
+    pub user_added: bool,
 }
 
 impl Song {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let name = path
-            .file_name()
+            .file_stem()
             .expect("attempted to load non-file as song")
             .to_string_lossy()
             .to_string();
@@ -23,6 +24,7 @@ impl Song {
             path,
             next: None,
             no_shuffle: false,
+            user_added: true,
         }
     }
 
