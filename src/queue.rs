@@ -53,6 +53,12 @@ impl Queue {
             self.history.push_back(id);
         }
 
+        if self.playlist.is_empty() {
+            // TODO: make this an option
+            self.queue_all();
+            self.shuffle();
+        }
+
         if let Some(id) = self.playlist.pop_front() {
             self.current = Some(id);
 
@@ -67,6 +73,12 @@ impl Queue {
                 self.explicit_next = false;
                 self.user_queue = self.user_queue.saturating_sub(1);
             }
+        }
+
+        if self.playlist.is_empty() {
+            // TODO: make this an option
+            self.queue_all();
+            self.shuffle();
         }
     }
 
@@ -108,7 +120,7 @@ impl Queue {
         self.playlist = self
             .songs
             .iter()
-            .filter_map(|(id, song)| song.user_added.then_some(id))
+            .filter_map(|(id, song)| (song.user_added && !song.no_shuffle).then_some(id))
             .collect();
 
         self.explicit_next = false;

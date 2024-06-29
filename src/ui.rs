@@ -2,7 +2,7 @@ use std::{sync::mpsc::Receiver, time::Duration};
 
 use cod::{
     prelude::*,
-    read::{KeyCode, KeyEvent},
+    read::{KeyCode, KeyEvent, KeyModifiers},
 };
 
 use crate::{player::Player, queue::Queue, Message};
@@ -15,6 +15,9 @@ pub enum Event {
     Prev,
 
     PlayPause,
+
+    SeekRight,
+    SeekLeft,
 }
 
 #[derive(Default)]
@@ -48,8 +51,20 @@ impl Ui {
                 }
             }
             KeyCode::Char('s') => Some(Event::Shuffle),
-            KeyCode::Right => Some(Event::Next),
-            KeyCode::Left => Some(Event::Prev),
+            KeyCode::Right => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    Some(Event::SeekRight)
+                } else {
+                    Some(Event::Next)
+                }
+            }
+            KeyCode::Left => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    Some(Event::SeekLeft)
+                } else {
+                    Some(Event::Prev)
+                }
+            }
             KeyCode::Char(' ') => Some(Event::PlayPause),
             _ => None,
         }

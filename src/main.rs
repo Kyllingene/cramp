@@ -56,22 +56,23 @@ fn main() {
     let mut player = Player::new();
     let mut ui = Ui::new();
 
-    let playlist = std::fs::read_to_string("/home/kyllingene/Music/sleep.m3u").unwrap();
+    let playlist = std::fs::read_to_string("/home/kyllingene/Music/favorites.m3u").unwrap();
     for message in queue.load(&playlist) {
         ui.add_message(message);
     }
 
     queue.queue_all();
+    queue.shuffle();
 
     let (tx, rx) = channel();
     let _handle = thread::spawn(move || loop {
         if let Some(key) = cod::read::key() {
-            tx.send(key);
+            tx.send(key).unwrap();
         }
     });
 
     loop {
-        if player.finished() && !player.playing() {
+        if player.finished() && player.playing() {
             queue.advance();
             if let Some(song) = queue.current() {
                 if let Err(e) = player.play(song) {
@@ -145,6 +146,8 @@ fn main() {
                         player.resume();
                     }
                 }
+                Some(Event::SeekRight) => player.seek_by(5.0),
+                Some(Event::SeekLeft) => player.seek_by(-5.0),
                 None => {}
             }
         }

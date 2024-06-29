@@ -145,9 +145,9 @@ dependencies = [
 
 [[package]]
 name = "cod"
-version = "9.0.0"
+version = "9.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d084ebca7757adaf1fff1dee6c8c895a381c028734c93be197082615406d9938"
+checksum = "743263583e0f2c3bccc9e38bdf073a274c75a4b60e84335d1a9a6ab15c16634d"
 dependencies = [
  "crossterm",
 ]

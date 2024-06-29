@@ -37,6 +37,12 @@ impl Player {
         })
     }
 
+    pub fn seek_by(&mut self, seconds: f64) {
+        if let Some(c) = &self.current {
+            c.seek_by(seconds);
+        }
+    }
+
     pub fn resume(&mut self) {
         if let Some(current) = &self.current {
             current.resume();
