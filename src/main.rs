@@ -1,16 +1,16 @@
+use std::fmt;
 use std::ops::Deref;
-use std::thread;
-use std::time::Duration;
-use std::{fmt, sync::mpsc::channel};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
+mod app;
 mod player;
 mod queue;
 mod song;
 mod ui;
 
-use player::Player;
-use queue::Queue;
-use ui::{Event, Ui};
+use app::{App, Effect};
+use mpris_server::Server;
 
 pub enum Message {
     Static(&'static str),
@@ -51,117 +51,45 @@ impl fmt::Display for Message {
     }
 }
 
-fn main() {
-    let mut queue = Queue::new();
-    let mut player = Player::new();
-    let mut ui = Ui::new();
+#[async_std::main]
+async fn main() {
+    let pid = std::process::id();
+    let server = Arc::new(
+        Server::new(
+            &format!("com.cramp.instance{pid}"),
+            App::new("/home/kyllingene/Music/favorites.m3u").await,
+        )
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("failed to launch MPRIS server: {e}");
+            cod::term::disable_raw_mode();
+            cod::term::primary_screen();
+            std::process::exit(1);
+        }),
+    );
 
-    let playlist = std::fs::read_to_string("/home/kyllingene/Music/favorites.m3u").unwrap();
-    for message in queue.load(&playlist) {
-        ui.add_message(message);
-    }
-
-    queue.queue_all();
-    queue.shuffle();
-
-    let (tx, rx) = channel();
-    let _handle = thread::spawn(move || loop {
-        if let Some(key) = cod::read::key() {
-            tx.send(key).unwrap();
-        }
-    });
-
+    let app = server.imp();
     loop {
-        if player.finished() && player.playing() {
-            queue.advance();
-            if let Some(song) = queue.current() {
-                if let Err(e) = player.play(song) {
-                    ui.add_message(Message::new(format!(
-                        "failed to play song {}: {e}",
-                        song.path.display()
-                    )));
+        app.poll().await;
+        for effect in app.effects.lock().await.drain(..) {
+            match effect {
+                Effect::Signal(s) => {
+                    if let Err(e) = server.emit(s).await {
+                        app.add_message(Message::new(format!("dbus error: {e}")))
+                            .await;
+                    }
                 }
-                if let Some(song) = queue.next() {
-                    if let Err(e) = player.load_next(song) {
-                        ui.add_message(Message::new(format!(
-                            "failed to load song {}: {e}",
-                            song.path.display()
-                        )));
+                Effect::Changed(c) => {
+                    if let Err(e) = server.properties_changed(c).await {
+                        app.add_message(Message::new(format!("dbus error: {e}")))
+                            .await;
                     }
                 }
             }
         }
 
-        ui.draw(&queue, &player);
-        ui.flush();
-
-        if let Ok(key) = rx.recv_timeout(Duration::from_secs(1)) {
-
-            // FIXME: query pause information from Queue, not Player
-            let paused = !player.playing();
-
-            match ui.event(key, &rx) {
-                Some(Event::Exit) => break,
-                Some(Event::Shuffle) => queue.shuffle(),
-                Some(Event::Next) => {
-                    player.stop();
-                    queue.advance();
-                    if let Some(song) = queue.current() {
-                        if let Err(e) = player.play(song) {
-                            ui.add_message(Message::new(format!(
-                                "failed to play song {}: {e}",
-                                song.path.display()
-                            )));
-                        }
-                        if paused {
-                            player.pause();
-                        }
-                    }
-                    if let Some(song) = queue.next() {
-                        if let Err(e) = player.load_next(song) {
-                            ui.add_message(Message::new(format!(
-                                "failed to load song {}: {e}",
-                                song.path.display()
-                            )));
-                        }
-                    }
-                }
-                Some(Event::Prev) => {
-                    player.stop();
-                    queue.previous();
-                    if let Some(song) = queue.current() {
-                        if let Err(e) = player.play(song) {
-                            ui.add_message(Message::new(format!(
-                                "failed to play song {}: {e}",
-                                song.path.display()
-                            )));
-                        }
-                        if paused {
-                            player.pause();
-                        }
-                    }
-                    if let Some(song) = queue.next() {
-                        if let Err(e) = player.load_next(song) {
-                            ui.add_message(Message::new(format!(
-                                "failed to load song {}: {e}",
-                                song.path.display()
-                            )));
-                        }
-                    }
-                }
-                Some(Event::PlayPause) => {
-                    if player.playing() {
-                        player.pause();
-                    } else {
-                        player.resume();
-                    }
-                }
-                Some(Event::SeekRight) => player.seek_by(5.0),
-                Some(Event::SeekLeft) => player.seek_by(-5.0),
-                None => {}
-            }
+        if app.quit.load(Ordering::Relaxed) {
+            break;
         }
-
-        ui.clear();
     }
 }

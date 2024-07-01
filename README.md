@@ -1,52 +1,58 @@
 # cramp
 ## Custom rust audio / music player
 
-##### Announcement: cramp now supports Windows!
+### UPDATE: as of 2.0, cramp is a whole new (TUI) application!
 
-The defining feature of cramp is that it's mine. I am only too glad to accept
-feature suggestions and pull requests, but the whole reason I made this is to
-have unorthodox features in my own player. If there's a feature I don't need, I
-probably won't implement it.
+Cramp is my personal music player, so I try to keep it up to my (esoteric)
+standards. Most recently this includes rewriting it from scratch to support more
+capabilities, and reduce CPU usage drastically.
 
-However, I am (again) happy to accept suggestions or help. If this somehow
-reaches anyone else, I will expand the scope of the project to make it more
-public-friendly. Until then, expect bugs, inconveniences, and incongruities.
+## Features
 
-#### Features:
- - a decent gui + strictly-searchable song list
- - opening and playing a folder of music or M3U playlist
- - basic shuffle
- - almost all the [MPRIS](https://specifications.freedesktop.org/mpris-spec/latest/) (think playerctl) basic spec
-    - seeking is currently not available, see [this issue](https://github.com/Kyllingene/cramp/issues/1)
- - super basic [M3U](https://en.wikipedia.org/wiki/M3U) support; only `#EXTINF` is supported for now
- - a 100-song history
- - two custom M3U tags:
-   - `#EXTNEXT:<next-song-uri>` to denote a "back-to-back" song
-     - song A always selects song B as the next song
-   - `#EXTNOSHUFFLE` to stop a song from being automatically played in a shuffled queue
- - basic playlist persistence
+- Extremely (almost unfairly) opinionated (e.g. shuffle only)
+- A low-cost, sleek TUI interface
+- A competent MPRIS interface (but no volume, rate, or shuffle)
+- Support for *very basic* playlists (list of songs), only recognizes...
+- Two custom `m3u` tags:
+    - `#EXTNOSHUFFLE`: don't shuffle in this song when shuffling the playlist
+    - `#EXTNEXT:<path>`: full path to a song to force-play after the current song
+- A separate "user queue" and playlist
+- A searchable song list
+- A 32-song history
 
-#### Roadmap:
- - clean up the Windows/Unix differences
- - implement `Seek` and `Metadata`
- - a more robust interface
-    - playback position + seeking
-    - fully-featured and ergonomic playlist management
-      - possibly validating MPRIS `Playlists`
- - more customized features
- - a CLI
- - implement `TrackList`
- - configuration?
-    - maybe plugin support?
+## Non-features
 
-#### Non-goals:
- - a tui (or at least not a good one)
- - a web build
- - streaming support (use pulseaudio)
- - playing web resources (sorry, download it or find another player)
- - playing audio streams
+I omit the following because I don't need them:
 
-#### Known bugs:
- - the MPRIS implementation doesn't emit the `PropertiesChanged` signal
+- A GUI
+- A competent playlist interface
+- Linear playback (always shuffled)
+- Volume or rate control
+- Windows support
+- Probably a lot more features you'd think were basic
 
-If you find a bug that isn't listed, [open an issue](https://github.com/kyllingene/issue/new).
+## Controls
+
+### Basics
+- `q`: exit the player (confirms first)
+- `space`: play/pause
+- `Right`: skip to the next song
+- `Left`: return to the previous song
+
+### Seeking
+- `Ctrl-Right`: seek 5 seconds forward in the song
+- `Ctrl-Left`: seek 5 seconds backward in the song
+
+### Selection
+- `Up`/`Down`: go up/down in the song list (bottom)
+- `Enter`: play the selected song now
+- `n`: play the selected song next
+- `a`: append the current song to the "user queue"
+    - User queue goes after the next song, but before the rest of the playlist
+- `/`: enter "search" mode:
+    - Type to filter songs *by path*, e.g. `foo` would match
+      `/home/music/foo/bar.mp3`
+    - `Esc` to exit search
+    - `Ctrl-<key>` to pass a letter through, e.g. `Ctrl-n` to set selected as
+      next
+- `s`: shuffle the playlist (not including user-selected songs)

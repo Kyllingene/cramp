@@ -43,6 +43,12 @@ impl Player {
         }
     }
 
+    pub fn seek_to(&mut self, seconds: f64) {
+        if let Some(c) = &self.current {
+            c.seek_to(seconds);
+        }
+    }
+
     pub fn resume(&mut self) {
         if let Some(current) = &self.current {
             current.resume();
@@ -55,10 +61,17 @@ impl Player {
         }
     }
 
-    pub fn stop(&mut self) {
+    pub fn end(&mut self) {
         if let Some(song) = self.current.take() {
             song.seek_to_end();
             song.resume(); // TODO: is this necessary?
+        }
+    }
+
+    pub fn stop(&mut self) {
+        if let Some(song) = &self.current {
+            song.reset();
+            song.pause();
         }
     }
 

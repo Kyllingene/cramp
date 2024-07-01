@@ -1,11 +1,18 @@
-use std::{sync::mpsc::Receiver, time::Duration};
+use std::sync::mpsc::{channel, Receiver};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
+// use async_std::channel::{unbounded, Receiver};
+use async_std::sync::Mutex;
 use cod::{
     prelude::*,
     read::{KeyCode, KeyEvent, KeyModifiers},
 };
 
-use crate::{player::Player, queue::Queue, Message};
+use crate::player::Player;
+use crate::queue::{Key, Queue};
+use crate::song::Song;
+use crate::Message;
 
 pub enum Event {
     Exit,
@@ -15,28 +22,105 @@ pub enum Event {
     Prev,
 
     PlayPause,
+    Play,
+    Pause,
+
+    PlayNow(Key),
+    PlayNext(Key),
+    Queue(Key),
 
     SeekRight,
     SeekLeft,
 }
 
-#[derive(Default)]
 pub struct Ui {
     messages: Vec<Message>,
+
+    songs: usize,
+    song_idx: usize,
+
+    search: Option<String>,
+    search_idx: usize,
+
+    rx: Mutex<Receiver<KeyEvent>>,
+    _handle: JoinHandle<()>,
 }
 
 impl Ui {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         term::secondary_screen();
         term::enable_raw_mode();
         clear::all();
         cod::flush();
 
-        Self::default()
+        let (tx, rx) = channel();
+        let _handle = thread::spawn(move || loop {
+            if let Some(key) = cod::read::key() {
+                tx.send(key).unwrap();
+            }
+        });
+
+        Self {
+            messages: Vec::with_capacity(4),
+
+            songs: 0,
+            song_idx: 0,
+
+            search: None,
+            search_idx: 0,
+
+            rx: Mutex::new(rx),
+            _handle,
+        }
     }
 
-    pub fn event(&mut self, key: KeyEvent, rx: &Receiver<KeyEvent>) -> Option<Event> {
-        let ev = match key.code {
+    pub async fn event(&mut self, queue: &Queue) -> Option<Event> {
+        let key = self
+            .rx
+            .lock()
+            .await
+            .recv_timeout(Duration::from_millis(10))
+            .ok()?;
+        self.messages.clear();
+
+        'search: {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                break 'search;
+            }
+
+            if let Some(search) = &mut self.search {
+                match key.code {
+                    KeyCode::Char(ch) => {
+                        search.insert(self.search_idx, ch.to_ascii_lowercase());
+                        self.search_idx += 1;
+                    }
+                    KeyCode::Backspace => {
+                        if self.search_idx > 0 {
+                            self.search_idx -= 1;
+                            search.remove(self.search_idx);
+                        } else if search.is_empty() {
+                            self.search = None;
+                            self.search_idx = 0;
+                        }
+                    }
+                    KeyCode::Right => self.search_idx += 1,
+                    KeyCode::Left => self.search_idx = self.search_idx.saturating_sub(1),
+                    KeyCode::Esc => {
+                        self.search = None;
+                        self.search_idx = 0;
+                    }
+                    _ => break 'search,
+                }
+
+                // TODO: adjust selection, don't reset it
+                self.songs = 0;
+                self.song_idx = 0;
+
+                return None;
+            }
+        }
+
+        match key.code {
             KeyCode::Char('q') => {
                 self.clear();
                 let (w, _) = term::size_or();
@@ -44,7 +128,15 @@ impl Ui {
                 draw_centered(4, "press y to exit", None, w, false);
                 self.flush();
 
-                if rx.recv_timeout(Duration::from_secs(5)).ok()?.code == KeyCode::Char('y') {
+                if self
+                    .rx
+                    .lock()
+                    .await
+                    .recv_timeout(Duration::from_secs(2))
+                    .ok()?
+                    .code
+                    == KeyCode::Char('y')
+                {
                     Some(Event::Exit)
                 } else {
                     None
@@ -66,14 +158,41 @@ impl Ui {
                 }
             }
             KeyCode::Char(' ') => Some(Event::PlayPause),
+
+            KeyCode::Char('/') => {
+                if self.search.is_none() {
+                    self.search = Some(String::with_capacity(16));
+                }
+                None
+            }
+
+            KeyCode::Down => {
+                self.song_idx += 1;
+                if self.song_idx > 5 {
+                    self.songs += 1;
+                }
+                None
+            }
+            KeyCode::Up => {
+                self.song_idx = self.song_idx.saturating_sub(1);
+                if self.song_idx < self.songs {
+                    self.songs = self.song_idx;
+                }
+                None
+            }
+
+            KeyCode::Enter => filter_songs(queue.songs(), &self.search)
+                .nth(self.song_idx)
+                .map(|(id, _)| Event::PlayNow(id)),
+            KeyCode::Char('n') => filter_songs(queue.songs(), &self.search)
+                .nth(self.song_idx)
+                .map(|(id, _)| Event::PlayNext(id)),
+            KeyCode::Char('a') => filter_songs(queue.songs(), &self.search)
+                .nth(self.song_idx)
+                .map(|(id, _)| Event::Queue(id)),
+
             _ => None,
-        };
-
-        if ev.is_some() {
-            self.messages.clear();
         }
-
-        ev
     }
 
     pub fn draw(&mut self, queue: &Queue, player: &Player) {
@@ -110,9 +229,26 @@ impl Ui {
         }
 
         draw_centered(8, "queued", None, w, true);
-
-        for (i, song) in queue.playlist().enumerate().take(h as usize - 11) {
+        for (i, song) in queue.playlist().enumerate().take(5) {
             draw_centered(i as u32 + 10, &song.name, None, w, false);
+        }
+
+        if let Some(search) = &self.search {
+            draw_centered(16, search, Some("search: "), w, true);
+        } else {
+            draw_centered(16, "songs", None, w, true);
+        }
+
+        let selected = self.song_idx - self.songs;
+        for (i, song) in filter_songs(queue.songs(), &self.search)
+            .map(|(_, song)| song)
+            .skip(self.songs)
+            .enumerate()
+            .take(h as usize - 19)
+        {
+            let pre = if i == selected { Some("> ") } else { None };
+
+            draw_centered(i as u32 + 18, &song.name, pre, w, i == selected);
         }
 
         for (i, message) in self.messages.iter().enumerate() {
@@ -129,14 +265,28 @@ impl Ui {
     }
 
     pub fn flush(&self) {
-        goto::home();
+        if self.search.is_some() {
+            let (w, _) = term::size_or();
+            goto::pos(
+                (w / 2) + (self.search_idx as u32 + 8 + (self.search_idx as u32 % 2)) / 2,
+                16,
+            );
+        } else {
+            goto::home();
+        }
+
         cod::flush();
+    }
+
+    pub fn exit(&self) {
+        term::primary_screen();
+        term::disable_raw_mode();
     }
 }
 
 fn draw_centered(y: u32, msg: &str, pre: Option<&str>, w: u32, bold: bool) {
-    let mid = (w / 2)
-        .saturating_sub((msg.len() as u32 + pre.map(|s| s.len() as u32).unwrap_or(0)) / 2);
+    let mid =
+        (w / 2).saturating_sub((msg.len() as u32 + pre.map(|s| s.len() as u32).unwrap_or(0)) / 2);
     goto::pos(mid, y);
 
     if let Some(pre) = pre {
@@ -148,6 +298,24 @@ fn draw_centered(y: u32, msg: &str, pre: Option<&str>, w: u32, bold: bool) {
     } else {
         print!("{msg}");
     }
+}
+
+fn filter_songs<'a>(
+    songs: impl Iterator<Item = (Key, &'a Song)>,
+    search: &Option<String>,
+) -> impl Iterator<Item = (Key, &'a Song)> {
+    let filter = if let Some(search) = search {
+        let search = search.clone();
+        Box::new(move |(_, song): &(Key, &Song)| {
+            let mut path = song.path.display().to_string();
+            path.make_ascii_lowercase();
+            path.contains(&search)
+        }) as Box<dyn Fn(&(Key, &Song)) -> bool>
+    } else {
+        Box::new(|_: &(Key, &Song)| true) as Box<_>
+    };
+
+    songs.filter(filter)
 }
 
 fn fmt_time(elapsed: f64, total: f64) -> String {
@@ -178,7 +346,6 @@ fn fmt_time(elapsed: f64, total: f64) -> String {
 
 impl Drop for Ui {
     fn drop(&mut self) {
-        term::primary_screen();
-        term::disable_raw_mode();
+        self.exit();
     }
 }
