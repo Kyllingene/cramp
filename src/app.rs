@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_std::sync::Mutex;
 use mpris_server::{Metadata, PlaybackStatus, Property, Signal, Time, TrackId};
-use slotmap::Key;
 
 use crate::player::Player;
 use crate::queue::Queue;
@@ -26,17 +25,19 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(path: impl AsRef<Path>) -> Self {
+    pub async fn new(path: Option<impl AsRef<Path>>) -> Self {
         let mut player = Player::new();
         let mut queue = Queue::new();
         let mut ui = Ui::new().await;
 
-        for message in queue.load(path) {
-            ui.add_message(message);
+        if let Some(path) = path {
+            for message in queue.load(path) {
+                ui.add_message(message);
+            }
         }
 
         queue.queue_all();
-        queue.shuffle();
+        queue.sort_songs();
         queue.advance();
 
         if let Some(song) = queue.current() {
@@ -113,8 +114,8 @@ impl App {
     fn meta(&self, player: &Player, queue: &Queue) -> Metadata {
         let mut meta = Metadata::new();
 
-        meta.set_trackid(Some(if let Some(id) = queue.current_id() {
-            format!("/com/cramp/tracks/trackid{}", id.data().as_ffi())
+        meta.set_trackid(Some(if let Some(current) = queue.current_id() {
+            format!("/com/cramp/tracks/trackid{current}")
                 .try_into()
                 .unwrap()
         } else {
@@ -165,6 +166,17 @@ impl App {
                 queue.shuffle();
                 Some(Effect::Changed(vec![Property::Shuffle(true)]))
             }
+            Some(Event::PlayPause) => {
+                if player.playing() {
+                    player.pause();
+                } else {
+                    player.resume();
+                }
+
+                Some(Effect::Changed(vec![Property::PlaybackStatus(
+                    self.status(&player),
+                )]))
+            }
             Some(Event::Next) => {
                 player.end();
                 self.advance(&mut player, &mut queue, &mut ui);
@@ -182,35 +194,6 @@ impl App {
                     Property::Metadata(self.meta(&player, &queue)),
                     Property::PlaybackStatus(self.status(&player)),
                 ]))
-            }
-            Some(Event::PlayPause) => {
-                if player.playing() {
-                    player.pause();
-                } else {
-                    player.resume();
-                }
-
-                Some(Effect::Changed(vec![Property::PlaybackStatus(
-                    self.status(&player),
-                )]))
-            }
-            Some(Event::Play) => {
-                if !player.playing() {
-                    player.resume();
-                }
-
-                Some(Effect::Changed(vec![Property::PlaybackStatus(
-                    self.status(&player),
-                )]))
-            }
-            Some(Event::Pause) => {
-                if player.playing() {
-                    player.pause();
-                }
-
-                Some(Effect::Changed(vec![Property::PlaybackStatus(
-                    self.status(&player),
-                )]))
             }
             Some(Event::PlayNow(id)) => {
                 let song = queue.play(id);
@@ -273,7 +256,6 @@ mod mpris {
         LoopStatus, Metadata, PlaybackStatus, PlayerInterface, Property, RootInterface, Signal,
         Time, TrackId,
     };
-    use slotmap::Key;
 
     use crate::song::Song;
 
@@ -477,8 +459,7 @@ mod mpris {
                 return Ok(());
             };
 
-            if track_id.as_str() != format!("/com/cramp/tracks/trackid{}", current.data().as_ffi())
-            {
+            if track_id.as_str() != format!("/com/cramp/tracks/trackid{current}") {
                 return Ok(());
             }
 
@@ -557,10 +538,15 @@ mod mpris {
         }
 
         async fn shuffle(&self) -> FResult<bool> {
-            Ok(true) // TODO: implement shuffling
+            let queue = self.queue.lock().await;
+            Ok(queue.shuffled())
         }
 
-        async fn set_shuffle(&self, _: bool) -> ZResult<()> {
+        async fn set_shuffle(&self, shuffle: bool) -> ZResult<()> {
+            if !shuffle {
+                return Ok(());
+            }
+
             let mut player = self.player.lock().await;
             let mut queue = self.queue.lock().await;
             let mut ui = self.ui.lock().await;

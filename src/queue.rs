@@ -1,19 +1,25 @@
 use circular_buffer::CircularBuffer;
 use rand::{seq::SliceRandom, thread_rng};
-use slotmap::SlotMap;
 
 use std::collections::VecDeque;
-use std::fs;
 use std::path::Path;
+use std::{fmt, fs};
 
 use crate::song::Song;
 use crate::Message;
 
-slotmap::new_key_type! { pub struct Key; }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Key(usize);
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Default)]
 pub struct Queue {
-    songs: SlotMap<Key, Song>,
+    songs: Vec<Song>,
 
     /// The list of all songs to play.
     playlist: VecDeque<Key>,
@@ -27,6 +33,11 @@ pub struct Queue {
     /// The currently playing song, if any.
     current: Option<Key>,
 
+    /// Whether or not to shuffle when re-queueing the playlist.
+    ///
+    /// Once enabled, cannot be disabled.
+    shuffle: bool,
+
     /// The songs played to completion.
     ///
     /// Keeps up to 32 entries.
@@ -38,14 +49,20 @@ impl Queue {
         Self::default()
     }
 
+    // FIXME: is invalidating each key an issue? tbd
+    pub fn sort_songs(&mut self) {
+        self.songs.sort_by_key(|song| song.name.clone());
+    }
+
     pub fn get(&self, id: Key) -> &Song {
-        self.songs.get(id).expect("given invalid key")
+        self.songs.get(id.0).expect("given invalid key")
     }
 
     pub fn songs(&self) -> impl Iterator<Item = (Key, &Song)> {
         self.songs
             .iter()
-            .filter_map(|(key, song)| song.user_added.then_some((key, song)))
+            .enumerate()
+            .filter_map(|(key, song)| song.user_added.then_some((Key(key), song)))
     }
 
     pub fn current(&self) -> Option<&Song> {
@@ -72,7 +89,6 @@ impl Queue {
         if self.playlist.is_empty() {
             // TODO: make this an option
             self.queue_all();
-            self.shuffle();
         }
 
         if let Some(id) = self.playlist.pop_front() {
@@ -82,7 +98,7 @@ impl Queue {
                 // FIXME: deduplicate please
                 let mut song = Song::new(path);
                 song.user_added = false;
-                let id = self.songs.insert(song);
+                let id = self.add_song(song);
                 self.playlist.push_front(id);
                 self.explicit_next = true;
             } else {
@@ -94,7 +110,6 @@ impl Queue {
         if self.playlist.is_empty() {
             // TODO: make this an option
             self.queue_all();
-            self.shuffle();
         }
     }
 
@@ -111,6 +126,11 @@ impl Queue {
     pub fn shuffle(&mut self) {
         self.playlist.make_contiguous();
         self.playlist.as_mut_slices().0[self.user_queue..].shuffle(&mut thread_rng());
+        self.shuffle = true;
+    }
+
+    pub fn shuffled(&self) -> bool {
+        self.shuffle
     }
 
     pub fn play(&mut self, id: Key) -> &Song {
@@ -135,7 +155,8 @@ impl Queue {
     }
 
     pub fn add_song(&mut self, song: Song) -> Key {
-        self.songs.insert(song)
+        self.songs.push(song);
+        Key(self.songs.len() - 1)
     }
 
     pub fn queue(&mut self, id: Key, user_queue: bool) {
@@ -149,8 +170,7 @@ impl Queue {
 
     pub fn queue_all(&mut self) {
         self.playlist = self
-            .songs
-            .iter()
+            .songs()
             .filter_map(|(id, song)| (song.user_added && !song.no_shuffle).then_some(id))
             .collect();
 
@@ -247,9 +267,7 @@ impl Queue {
                     line.into()
                 };
 
-                let id = self
-                    .songs
-                    .insert(Song::new(path).next(next.take()).no_shuffle(no_shuffle));
+                let id = self.add_song(Song::new(path).next(next.take()).no_shuffle(no_shuffle));
 
                 if !no_shuffle {
                     self.playlist.push_back(id);

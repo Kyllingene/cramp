@@ -18,12 +18,9 @@ pub enum Event {
     Exit,
     Shuffle,
 
+    PlayPause,
     Next,
     Prev,
-
-    PlayPause,
-    Play,
-    Pause,
 
     PlayNow(Key),
     PlayNext(Key),

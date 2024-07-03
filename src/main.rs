@@ -57,7 +57,7 @@ async fn main() {
     let server = Arc::new(
         Server::new(
             &format!("com.cramp.instance{pid}"),
-            App::new("/home/kyllingene/Music/favorites.m3u").await,
+            App::new(std::env::args().nth(1)).await,
         )
         .await
         .unwrap_or_else(|e| {

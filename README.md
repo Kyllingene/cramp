@@ -9,7 +9,7 @@ capabilities, and reduce CPU usage drastically.
 
 ## Features
 
-- Extremely (almost unfairly) opinionated (e.g. shuffle only)
+- Extremely (almost unfairly) opinionated (e.g. no unshuffle)
 - A low-cost, sleek TUI interface
 - A competent MPRIS interface (but no volume, rate, or shuffle)
 - Support for *very basic* playlists (list of songs), only recognizes...
@@ -55,4 +55,4 @@ I omit the following because I don't need them:
     - `Esc` to exit search
     - `Ctrl-<key>` to pass a letter through, e.g. `Ctrl-n` to set selected as
       next
-- `s`: shuffle the playlist (not including user-selected songs)
+- `s`: shuffle the playlist (not including user-queued songs)
