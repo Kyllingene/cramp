@@ -256,6 +256,14 @@ impl Queue {
                 if ext.trim() == "EXTNOSHUFFLE" {
                     no_shuffle = true;
                 } else if let Some(path) = ext.strip_prefix("EXTNEXT:") {
+                    let path = if let Some(rest) = path.strip_prefix("~/") {
+                        let mut path = home.clone();
+                        path.push(rest);
+                        path
+                    } else {
+                        path.into()
+                    };
+
                     next = Some(path);
                 }
             } else {
