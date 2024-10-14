@@ -2,8 +2,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_std::sync::Mutex;
+use interprocess::local_socket::prelude::*;
 use mpris_server::{Metadata, PlaybackStatus, Property, Signal, Time, TrackId};
 
+use crate::ipc;
 use crate::player::Player;
 use crate::queue::Queue;
 use crate::song::Song;
@@ -19,6 +21,7 @@ pub struct App {
     player: Mutex<Player>,
     queue: Mutex<Queue>,
     ui: Mutex<Ui>,
+    ipc: LocalSocketListener,
 
     pub quit: AtomicBool,
     pub effects: Mutex<Vec<Effect>>,
@@ -28,6 +31,7 @@ impl App {
     pub async fn new(path: Option<impl AsRef<Path>>) -> Self {
         let mut player = Player::new();
         let mut queue = Queue::new();
+        let ipc = ipc::new();
         let mut ui = Ui::new().await;
 
         if let Some(path) = path {
@@ -53,6 +57,7 @@ impl App {
             player: Mutex::new(player),
             queue: Mutex::new(queue),
             ui: Mutex::new(ui),
+            ipc,
 
             quit: AtomicBool::new(false),
             effects: Mutex::new(Vec::with_capacity(4)),
@@ -149,6 +154,64 @@ impl App {
             std::process::exit(0);
         }
 
+        let mut effects = [None, None];
+        if let Ok(conn) = self.ipc.accept() {
+            effects[0] = match ipc::handle(&conn, &mut ui) {
+                Some(ipc::Event::Exit) => {
+                    self.quit.store(true, Ordering::Relaxed);
+                    None
+                }
+                Some(ipc::Event::Shuffle) => {
+                    queue.shuffle();
+                    Some(Effect::Changed(vec![Property::Shuffle(true)]))
+                }
+                Some(ipc::Event::PlayPause) => {
+                    if player.playing() {
+                        player.pause();
+                    } else {
+                        player.resume();
+                    }
+
+                    Some(Effect::Changed(vec![Property::PlaybackStatus(
+                        self.status(&player),
+                    )]))
+                }
+                Some(ipc::Event::Play) => {
+                    player.resume();
+
+                    Some(Effect::Changed(vec![Property::PlaybackStatus(
+                        self.status(&player),
+                    )]))
+                }
+                Some(ipc::Event::Pause) => {
+                    player.pause();
+
+                    Some(Effect::Changed(vec![Property::PlaybackStatus(
+                        self.status(&player),
+                    )]))
+                }
+                Some(ipc::Event::Next) => {
+                    player.end();
+                    self.advance(&mut player, &mut queue, &mut ui);
+
+                    Some(Effect::Changed(vec![
+                        Property::Metadata(self.meta(&player, &queue)),
+                        Property::PlaybackStatus(self.status(&player)),
+                    ]))
+                }
+                Some(ipc::Event::Prev) => {
+                    player.end();
+                    self.previous(&mut player, &mut queue, &mut ui);
+
+                    Some(Effect::Changed(vec![
+                        Property::Metadata(self.meta(&player, &queue)),
+                        Property::PlaybackStatus(self.status(&player)),
+                    ]))
+                }
+                None => None,
+            };
+        }
+
         if player.finished() && player.playing() {
             self.advance(&mut player, &mut queue, &mut ui);
         }
@@ -157,7 +220,7 @@ impl App {
         ui.flush();
 
         // FIXME: query pause information from Queue, not Player
-        if let Some(effect) = match ui.event(&queue).await {
+        effects[1] = match ui.event(&queue).await {
             Some(Event::Exit) => {
                 self.quit.store(true, Ordering::Relaxed);
                 None
@@ -239,7 +302,9 @@ impl App {
                 })
             }
             None => None,
-        } {
+        };
+
+        for effect in effects.into_iter().flatten() {
             self.effects.lock().await.push(effect);
         }
 

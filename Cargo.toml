@@ -9,6 +9,7 @@ circular-buffer = "0.1.7"
 cod = { version = "9.0.0", features = ["crossterm"] }
 crossbeam-channel = "0.5.13"
 dirs = "5.0.1"
+interprocess = "2.2.1"
 kittyaudio = "0.1.9"
 mpris-server = "0.8.0"
 rand = "0.8.5"

@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 mod app;
+mod ipc;
 mod player;
 mod queue;
 mod song;
